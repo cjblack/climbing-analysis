@@ -1,12 +1,3 @@
-"""
-Poisson GLM (SciPy) for continuous spike + kinematic data
-- Input:
-    spikes_ts: 1D array of spike timestamps in seconds (for *one* neuron)
-    kin_ts: 1D array of timestamps for kinematic samples (seconds)
-    kin: (N_kin, K) array of kinematic variables sampled at kin_ts
-- Output: fitted beta and evaluation metrics
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
@@ -94,6 +85,14 @@ def resample_data(kinematics, spike_ts, bin_width=0.2,fps=0.005):
     return kinematics, spikes_binned, bin_width
 
 def create_glm(kinematics, spikes_binned):
+    """
+    Poisson GLM for continuous spike + kinematic data
+    - Input:
+        spikes_ts: 1D array of spike timestamps in seconds (for *one* neuron)
+        kin_ts: 1D array of timestamps for kinematic samples (seconds)
+        kin: (N_kin, K) array of kinematic variables sampled at kin_ts
+    - Output: fitted beta and evaluation metrics
+    """
     X = sm.add_constant(kinematics)
     glm_poisson = sm.GLM(spikes_binned,X,family=sm.families.Poisson())
     glm_results = glm_poisson.fit()

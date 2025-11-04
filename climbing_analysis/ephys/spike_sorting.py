@@ -1,10 +1,11 @@
 from pathlib import Path
-import yaml
 from spikeinterface.sorters import run_sorter
 from spikeinterface import create_sorting_analyzer
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.extractors import read_phy
 from climbing_analysis.ephys.utils import *
+from climbing_analysis.pose.utils import pixels_to_cm
+from scipy.ndimage import gaussian_filter1d
 
 
 def sort_spikes(data_path: str, param_file:str) #rec_type:str = 'openephys', sorter='kilosort4', probe_manufacturer: str = 'cambridgeneurotech', probe_id: str = 'ASSY-236-H5', channel_map = 'h5_channel_map.npy'):
@@ -67,11 +68,11 @@ def plot_waveform(wfs, channel):
     plt.show()
 
 
-def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], bin_size=0.02, smooth_sigma=1.0, save_fig=None):
+def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
     """
     Plot peristimulus time histogram from session
     """
-    fig, ax =plt.subplots(2,1, sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+    fig, ax =plt.subplots(3,1, sharex=True, gridspec_kw={'height_ratios': [4, 1, 1]})
     spike_train_total = []
     for unit_id in unit_ids:
         spike_train = sorting.get_unit_spike_train(unit_id=unit_id)
@@ -79,6 +80,7 @@ def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='
     spike_train_total = np.concatenate(spike_train_total)
     spike_train = spike_train_total/30000
     spikes_to_store = []
+    kin_to_store = []
     spks_per_trial_total = []
     all_counts = []
     bins = np.arange(xlim_[0], xlim_[1] + bin_size, bin_size)
@@ -99,16 +101,43 @@ def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='
         aligned_spikes = spike_train - bt[bout_start_id]
         spks_per_trial = []
         for i, tstart in enumerate(times_):
+            tstart_samp = tstart
             tstart = tstart/200.0
             spikes_in_window = aligned_spikes[(aligned_spikes>(tstart-0.5)) & (aligned_spikes <=(tstart+0.5))]
             spikes_to_store.append(spikes_in_window-tstart)
             spks_per_trial.append([i,spikes_in_window-tstart])
-
+            movement = dflist[trial_ids_sort[ii]][node+'_Y'].to_numpy()
+            kin_to_store.append((movement[tstart_samp-100:tstart_samp+100]-movement[tstart_samp])*pixels_to_cm())
             counts, _ = np.histogram(spikes_in_window-tstart, bins=np.arange(xlim_[0],xlim_[1]+bin_size,bin_size))
             all_counts.append(counts)
         spks_per_trial_total.append(spks_per_trial)
 
+    if prune_trials:
+        kin_prune = []
+        spikes_prune = []
+
+        for i, v in enumerate(kin_to_store):
+            if len(v) == 200:
+                if epoch_loc == 'start':
+                    #if (np.mean(v[50:100]) < 0.5) & (np.mean(v[100:150])>1.5):
+                    if (np.max(v[:100]) < 3.0) & (np.max(v[100:])<4.0) & (np.mean(v[100:])>1.5):
+                        kin_prune.append(v)
+                        spikes_prune.append(spikes_to_store[i])
+                elif epoch_loc == 'end':
+                    #if (np.mean(v[50:100]) < -0.5) & (np.mean(v[100:150]) > -0.5):
+                    if (np.max(v[:100]) < 1.0) & (np.min(v[:100])>-8.0) & (np.max(v[100:]) < 5.0) & (np.mean(v[100:])>-0.5):
+                        kin_prune.append(v)
+                        spikes_prune.append(spikes_to_store[i])
+                elif epoch_loc == 'max':
+                    if (np.max(v[:100]) < 3.0) & (np.max(v[100:]) < 5.0) & (np.mean(v[100:]) > 1.5):
+                        kin_prune.append(v)
+                        spikes_prune.append(spikes_to_store[i])
+        spikes_to_store = spikes_prune
+        kin_to_store = kin_prune
+    
     sorted_spikes = sorted(spikes_to_store,key=len, reverse=True)
+    plt.title(f'{node} movement {epoch_loc}')
+
     for iii, x in enumerate(sorted_spikes):
         ax[0].vlines(x, iii + 0, iii + 1, color='black', lw=1)
     ax[0].axvline(0.0, linestyle='--', color='red', linewidth=0.75,alpha=0.5)
@@ -124,12 +153,18 @@ def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='
         ax[1].plot(tbins,smoothed_rate,color='black')
         ax[1].axvline(0, linestyle='--',color='red', linewidth=0.75, alpha=0.5)
         ax[1].set_ylabel('Firing rate (spikes/s)')
-        ax[1].set_xlabel('Time (s)')
+    kin_ts = np.linspace(-0.5,0.5,200)
+    for ki in kin_to_store:
+        if len(ki) == 200:
+            ax[2].plot(kin_ts,ki,color='black',alpha=0.5)
+    ax[2].set_ylabel('Distance (cm)')
+    ax[2].set_xlabel('Time (s)')
+    ax[2].axvline(0, linestyle='--',color='red', linewidth=0.75, alpha=0.5)
 
-    plt.title(f'{node} movement {epoch_loc}')
+
     if save_fig:
         plt.savefig(save_fig+f'/{node}_movement-{epoch_loc}_unit_id{unit_ids[0]}_spikeraster.png')
         plt.savefig(save_fig+f'/{node}_movement-{epoch_loc}_unit_id{unit_ids[0]}_spikeraster.pdf')
 
     plt.show()
-    return spikes_to_store, spks_per_trial_total
+    return spikes_to_store, spks_per_trial_total, kin_to_store
