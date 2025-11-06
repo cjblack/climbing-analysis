@@ -139,3 +139,11 @@ def load_pickle(fname):
     with open(fname, "rb") as f:  # "rb" = read binary
         data = pickle.load(f)
     return data
+
+def get_trial_order(dflist):
+    trial_ids = []
+    for df in dflist:
+        tid = int(df.attrs['Trial'].split('T')[-1])
+        trial_ids.append(tid)
+    trial_ids_sort = np.argsort(trial_ids)
+    return trial_ids_sort

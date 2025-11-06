@@ -1,4 +1,5 @@
 from pathlib import Path
+import matplotlib.pyplot as plt
 from spikeinterface.sorters import run_sorter
 from spikeinterface import create_sorting_analyzer
 from spikeinterface.exporters import export_to_phy
@@ -8,7 +9,7 @@ from climbing_analysis.pose.utils import pixels_to_cm
 from scipy.ndimage import gaussian_filter1d
 
 
-def sort_spikes(data_path: str, param_file:str) #rec_type:str = 'openephys', sorter='kilosort4', probe_manufacturer: str = 'cambridgeneurotech', probe_id: str = 'ASSY-236-H5', channel_map = 'h5_channel_map.npy'):
+def sort_spikes(data_path: str, param_file:str): #rec_type:str = 'openephys', sorter='kilosort4', probe_manufacturer: str = 'cambridgeneurotech', probe_id: str = 'ASSY-236-H5', channel_map = 'h5_channel_map.npy'):
     """
     Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe
     """
@@ -79,12 +80,25 @@ def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='
         spike_train_total.append(spike_train)
     spike_train_total = np.concatenate(spike_train_total)
     spike_train = spike_train_total/30000
+    
+    # Set lists
     spikes_to_store = []
     kin_to_store = []
+    mirror_kin_to_store = []
     spks_per_trial_total = []
     all_counts = []
     bins = np.arange(xlim_[0], xlim_[1] + bin_size, bin_size)
     iii = 0
+
+    # Get the mirrored node - will expand later to get all nodes
+    if node == 'r_forepaw':
+        mirror_node = 'l_forepaw'
+    elif node == 'l_forepaw':
+        mirror_node = 'r_forepaw'
+    elif node == 'r_hindpaw':
+        mirror_node = 'l_hindpaw'
+    elif node == 'l_hindpaw':
+        mirror_node = 'r_hindpaw'
 
     # Sort sessions in numerical order
     trial_ids = []
@@ -100,20 +114,29 @@ def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='
         times_ = np.array(stances[trial_ids_sort[ii]][node][epoch_loc])
         aligned_spikes = spike_train - bt[bout_start_id]
         spks_per_trial = []
+
+        # Get kinematics of node for corresponding trial
+        movement = dflist[trial_ids_sort[ii]][node+'_Y'].to_numpy()
+        # Get kinematics of mirror node for corresponding trial
+        mirror_movement = dflist[trial_ids_sort[ii]][mirror_node+'_Y'].to_numpy()
         for i, tstart in enumerate(times_):
             tstart_samp = tstart
             tstart = tstart/200.0
             spikes_in_window = aligned_spikes[(aligned_spikes>(tstart-0.5)) & (aligned_spikes <=(tstart+0.5))]
             spikes_to_store.append(spikes_in_window-tstart)
             spks_per_trial.append([i,spikes_in_window-tstart])
-            movement = dflist[trial_ids_sort[ii]][node+'_Y'].to_numpy()
+
+            # Store kinematics of node
             kin_to_store.append((movement[tstart_samp-100:tstart_samp+100]-movement[tstart_samp])*pixels_to_cm())
+            # Store kinematics of mirrored node
+            mirror_kin_to_store.append((mirror_movement[tstart_samp-100:tstart_samp+100]-movement[tstart_samp])*pixels_to_cm())
             counts, _ = np.histogram(spikes_in_window-tstart, bins=np.arange(xlim_[0],xlim_[1]+bin_size,bin_size))
             all_counts.append(counts)
         spks_per_trial_total.append(spks_per_trial)
 
     if prune_trials:
         kin_prune = []
+        mirror_kin_prune = []
         spikes_prune = []
 
         for i, v in enumerate(kin_to_store):
@@ -122,18 +145,22 @@ def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='
                     #if (np.mean(v[50:100]) < 0.5) & (np.mean(v[100:150])>1.5):
                     if (np.max(v[:100]) < 3.0) & (np.max(v[100:])<4.0) & (np.mean(v[100:])>1.5):
                         kin_prune.append(v)
+                        mirror_kin_prune.append(mirror_kin_to_store[i])
                         spikes_prune.append(spikes_to_store[i])
                 elif epoch_loc == 'end':
                     #if (np.mean(v[50:100]) < -0.5) & (np.mean(v[100:150]) > -0.5):
                     if (np.max(v[:100]) < 1.0) & (np.min(v[:100])>-8.0) & (np.max(v[100:]) < 5.0) & (np.mean(v[100:])>-0.5):
                         kin_prune.append(v)
+                        mirror_kin_prune.append(mirror_kin_to_store[i])
                         spikes_prune.append(spikes_to_store[i])
                 elif epoch_loc == 'max':
                     if (np.max(v[:100]) < 3.0) & (np.max(v[100:]) < 5.0) & (np.mean(v[100:]) > 1.5):
                         kin_prune.append(v)
+                        mirror_kin_prune.append(mirror_kin_to_store[i])
                         spikes_prune.append(spikes_to_store[i])
         spikes_to_store = spikes_prune
         kin_to_store = kin_prune
+        mirror_kin_to_store = mirror_kin_prune
     
     sorted_spikes = sorted(spikes_to_store,key=len, reverse=True)
     plt.title(f'{node} movement {epoch_loc}')
@@ -167,4 +194,4 @@ def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='
         plt.savefig(save_fig+f'/{node}_movement-{epoch_loc}_unit_id{unit_ids[0]}_spikeraster.pdf')
 
     plt.show()
-    return spikes_to_store, spks_per_trial_total, kin_to_store
+    return spikes_to_store, kin_to_store, mirror_kin_to_store
