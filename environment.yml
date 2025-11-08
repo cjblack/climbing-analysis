@@ -1,6 +1,8 @@
 name: climbing_analysis
 channels:
   - defaults
+  - pytorch
+  - nvidia
   - conda-forge
 dependencies:
   - matplotlib
