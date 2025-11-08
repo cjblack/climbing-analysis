@@ -11,7 +11,7 @@ dependencies:
   - pandas
   - pip
   - pytest
-  - python=3.9
+  - python=3.11 #3.9
   - pytorch
   - pytorch-cuda=11.8
   - pytables
