@@ -15,8 +15,9 @@ dependencies:
   - pytables
   - statsmodels
   - h5py
-  - open-ephys-python-tools
-  - scikit-learn
   - scipy
-  - spikeinterface
   - yaml
+  - pip:
+    - open-ephys-python-tools
+    - scikit-learn
+    - spikeinterface
