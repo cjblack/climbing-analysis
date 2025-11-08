@@ -48,8 +48,11 @@ class ClimbingSessionData:
 
     @log_call(label='event data', type='load')
     def get_event_data(self):
-        event_data, ts, bouts, frame_captures, continuous = get_camera_events(self.session_path)
-        self.frame_captures = frame_captures
+        prefix = 'Record Node'
+        self.has_ephys = any(p.is_dir() and p.name.startswith(prefix) for p in self.session_path.iterdir())
+        if self.has_ephys:
+            event_data, ts, bouts, frame_captures, continuous = get_camera_events(self.session_path)
+            self.frame_captures = frame_captures
 
     @property
     def unit_ids(self):

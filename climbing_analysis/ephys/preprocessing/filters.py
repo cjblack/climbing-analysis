@@ -1,4 +1,3 @@
-import numpy as np
 from scipy.signal import butter, filtfilt, sosfiltfilt, iirnotch, decimate
 
 def filter_lfp(lfp, fs, notch_freq=50.0, band=(0.1, 100.0), quality=30.0):
@@ -43,6 +42,3 @@ def filter_lfp(lfp, fs, notch_freq=50.0, band=(0.1, 100.0), quality=30.0):
     fs_ds = fs/30
 
     return lfp_ds, fs_ds
-
-lfp_notch = filtfilt(b_notch,a_notch,lfp[:,51])
-b_notch,a_notch = iirnotch(w0=50.,Q=30,fs=30000)

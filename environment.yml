@@ -1,0 +1,22 @@
+name: climbing_analysis
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - matplotlib
+  - mne
+  - numpy
+  - pandas
+  - pip
+  - pytest
+  - python=3.9
+  - pytorch
+  - pytorch-cuda=11.8
+  - pytables
+  - statsmodels
+  - h5py
+  - open-ephys-python-tools
+  - scikit-learn
+  - scipy
+  - spikeinterface
+  - yaml
