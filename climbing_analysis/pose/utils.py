@@ -30,9 +30,29 @@ def load_df_list(df_list_filename):
                 print(f"Skipping {key}: {e}")
 
     for key, df in dfs.items():
-        if attrs[key] is not None:
-            df.attrs = attrs[key]
+        raw_attr = attrs.get(key)
+        if raw_attr is None:
             dflist.append(df)
+            continue
+
+        try:
+            df.attrs = raw_attr
+        except Exception:
+            try:
+                df.attrs = pickle.loads(raw_attr)
+            except Exception as e:
+                print(f"Could not load attrs for {key}: {e}")
+                df.attrs={}
+        if 'Path' in df.attrs:
+            try:
+                # Convert WindowsPath to string safely
+                if "Path" in str(type(df.attrs['Path'])):
+                    df.attrs['Path'] = str(df.attrs['Path'])
+            except Exception as e:
+                print(f"Warning: could not sanitize 'Path' in {key}: {e}")
+                df.attrs['Path'] = str(df.attrs['Path']) if hasattr(df.attrs['Path'], '__str__') else 'INVALID'
+
+        dflist.append(df)    
 
     return dflist
 
