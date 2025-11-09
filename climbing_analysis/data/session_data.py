@@ -39,8 +39,8 @@ class ClimbingSessionData:
     @log_call(label='pose data', type='load')
     def get_pose_data(self, pose_path):
         # load pose data
-        self.pose_df_list = load_df_list(pose_path / 'pose.h5')
-        self.stances = load_pickle(pose_path / 'stances.pkl')
+        self.pose_df_list = load_df_list(str(pose_path / 'pose.h5')) # convert to string for linux systems
+        self.stances = load_pickle(str(pose_path / 'stances.pkl')) # convert to string for linux systems
 
     @log_call(label='spike data', type='load')
     def get_spike_data(self):
