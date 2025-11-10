@@ -4,6 +4,7 @@ from spikeinterface.sorters import run_sorter
 from spikeinterface import create_sorting_analyzer
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.extractors import read_phy
+from spikeinterface.core import load_sorting_analyzer
 from climbing_analysis.ephys.utils import *
 from climbing_analysis.pose.utils import pixels_to_cm
 from scipy.ndimage import gaussian_filter1d
@@ -57,6 +58,13 @@ def load_phy_sorting(directory):
     """
     sorting = read_phy(directory)
     return sorting
+
+def load_analyzer(directory):
+    """
+    Load sorting analyzer
+    """
+    analyzer = load_sorting_analyzer(directory)
+    return analyzer
 
 def plot_waveform(wfs, channel):
     """

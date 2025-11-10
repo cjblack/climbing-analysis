@@ -12,6 +12,7 @@ class ClimbingSessionData:
         self.sorting_params = get_sorting_params(params)
         self.ephys_data = None
         self.pose_data = None
+        self.analyzer = None
         self.metadata = {}
 
         # For running/loading sorting
@@ -62,6 +63,12 @@ class ClimbingSessionData:
         if self.has_ephys:
             event_data, ts, bouts, frame_captures, continuous = get_camera_events(self.session_path)
             self.frame_captures = frame_captures
+
+    @log_call(label='analyzer', type='load')
+    def get_analyzer(self):
+        analyzer_path = self.sorting_path.resolve().parent.parent / 'analyzer_folder'
+        if analyzer_path.is_dir():
+            self.analyzer = load_analyzer(analyzer_path)
 
     @property
     def unit_ids(self):
