@@ -70,6 +70,13 @@ class ClimbingSessionData:
         if analyzer_path.is_dir():
             self.analyzer = load_analyzer(analyzer_path)
 
+    @log_call(label='psth', type='plot')
+    def plot_psth(self, unit_id, node='r_hindpaw', epoch_loc='start', save_fig=False):
+        if (unit_id in self.unit_ids) and (self.sorter) and (self.pose_df_list) and (self.stances) and (self.frame_captures):
+            spikes, kinematics, mirror_kinematics = plot_session_psth([unit_id],self.sorter, self.pose_df_list, self.frame_captures, self.stances, node=node, epoch_loc=epoch_loc, save_fig=save_fig)
+        else:
+            print('not all data loaded.')
+
     @property
     def unit_ids(self):
         if self.sorter:
@@ -82,4 +89,3 @@ class ClimbingSessionData:
             return len(self.pose_df_list)
         else:
             raise AttributeError('pose data does not exist, please add to root folder.')
-        
