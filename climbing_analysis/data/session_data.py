@@ -21,12 +21,16 @@ class ClimbingSessionData:
         self.recording_no = 'recording1'
         self.sorter_method = 'kilosort4'
 
+        # Run data checks and get events
         self.check_pose()
         self.check_ephys()
         self.get_event_data()
 
     @log_call(label='pose data check')
     def check_pose(self):
+        """
+        Checks that pose data exists, then loads
+        """
         if self.session_path.is_dir():
             self.get_pose_data(self.pose_path)
         else:
@@ -34,6 +38,9 @@ class ClimbingSessionData:
 
     @log_call(label='ephys data check')
     def check_ephys(self):
+        """
+        Checks that ephys data exists, then loads
+        """
         self.sorting_path = self.session_path.joinpath(self.rec_node, self.experiment_no, self.recording_no, self.sorter_method, 'phy_output')
         if self.sorting_path.exists():
             self.get_spike_data()
@@ -42,22 +49,43 @@ class ClimbingSessionData:
 
     @log_call(label='pose data', type='load')
     def get_pose_data(self, pose_path):
+        """
+        Gets pose data
+        stores:
+            self.pose_df_list: list of data frames containing x,y coordinates of each ROI for each trial
+            self.stances: dictionary of start, end, and maximum velocity time points for reaching events of fore and hind paws
+        """
         # load pose data
         self.pose_df_list = load_df_list(str(pose_path / 'pose.h5')) # convert to string for linux systems
         self.stances = load_pickle(str(pose_path / 'stances.pkl')) # convert to string for linux systems
 
     @log_call(label='spike data', type='load')
     def get_spike_data(self):
+        """
+        Gets sorted spike data
+        stores:
+            self.sorter: spikeinterface sorting object, containing spike sorted data
+        """
         self.sorter = load_phy_sorting(self.sorting_path)
 
     @log_call(label='recording', type='load')
     def get_recording(self):
+        """
+        Gets ephys recording
+        stores:
+            self.recording: spikeinterface recording object containing raw data traces, with relevant probe information
+        """
         self.recording = read_data(data_path=str(self.session_path), rec_type=self.sorting_params['rec_type'])
         self.probe = create_probe(self.sorting_params['probe_manufacturer'],self.sorting_params['probe_id'], self.sorting_params['channel_map'])
         self.recording.set_probe(self.probe,group_mode='by_shank')
 
     @log_call(label='event data', type='load')
     def get_event_data(self):
+        """
+        Gets camera event data from analog channel - currently hard coded to specific channel
+        stores:
+            self.frame_captures: list containing lists of sample indices for each captured frame for each trial
+        """
         prefix = 'Record Node'
         self.has_ephys = any(p.is_dir() and p.name.startswith(prefix) for p in self.session_path.iterdir())
         if self.has_ephys:
@@ -66,12 +94,23 @@ class ClimbingSessionData:
 
     @log_call(label='analyzer', type='load')
     def get_analyzer(self):
+        """
+        Gets the analyzer data:
+            self.analyzer: stores the spikeinterface analyzer object, use this for plotting spike waveforms
+        """
         analyzer_path = self.sorting_path.resolve().parent.parent / 'analyzer_folder'
         if analyzer_path.is_dir():
             self.analyzer = load_analyzer(analyzer_path)
 
     @log_call(label='psth', type='plot')
     def plot_psth(self, unit_id, node='r_hindpaw', epoch_loc='start', save_fig=False):
+        """
+        Plot peri-stimulus time histograms from the climbing session for different nodes with respect to different movements
+        inputs:
+            node: str -> dependent on self.pose_df_list nodes, current choices are: 'r_hindpaw', 'r_forepaw', 'l_hindpaw', 'l_forepaw'
+            epoch_loc: str -> 'start', 'end', 'max'; to align data to start of movement, end of movement, or maximum velocity of movement
+            save_fig: bool | str -> False if no plot, directory string if you want to store plot. Will update in the future
+        """
         if (unit_id in self.unit_ids) and (self.sorter) and (self.pose_df_list) and (self.stances) and (self.frame_captures):
             spikes, kinematics, mirror_kinematics = plot_session_psth([unit_id],self.sorter, self.pose_df_list, self.frame_captures, self.stances, node=node, epoch_loc=epoch_loc, save_fig=save_fig)
         else:
@@ -79,12 +118,18 @@ class ClimbingSessionData:
 
     @property
     def unit_ids(self):
+        """
+        Property storing a list of unit ids from the sorting object
+        """
         if self.sorter:
             return self.sorter.get_unit_ids()
         else:
             raise AttributeError('sorting object does not exist, please run spike sorting.')
     @property
     def trial_number(self):
+        """
+        Property storing number of trials for the session, extracted from the length of the self.pose_df_list
+        """
         if self.pose_df_list:
             return len(self.pose_df_list)
         else:
