@@ -6,6 +6,13 @@ from climbing_analysis.ephys.spike_sorting import *
 from climbing_analysis.ephys.events import get_camera_events
 
 class ClimbingSessionData:
+    """
+    Class for loading in all relevant pose and ephys data during climbing session.
+    Requires processing of video data for pose estimation to be stored within data directory in 'PoseData' folder.
+    Use:
+    from climbing_analysis.data.session_data import ClimbingSessionData
+    csession = ClimbingSessionData('path/to/data/directory')
+    """
     def __init__(self, session_path, params='climbing_sorting_params.yaml'):
         self.session_path = Path(session_path)
         self.pose_path = self.session_path / 'PoseData'
