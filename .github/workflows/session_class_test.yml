@@ -24,25 +24,25 @@ jobs:
         run: |
           pytest --maxfail=1 --disable-warnings -q
   
-  # merge:
-  #   needs: test
-  #   runs-on: ubuntu-latest
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/development' && success() # only run if tests pass
-  #   steps:
-  #     - name: Checkout development branch
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #     - name: Merge dev > main 
-  #       run: |
-  #         git config user.name "${{ github.actor }}"
-  #         git config user.email "${{ github.actor }}@users.noreply.github.com"
+  merge:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/development' && success() # only run if tests pass
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Merge dev > main 
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-  #         git fetch origin main
-  #         git fetch origin development
-  #         git checkout main
-  #         git merge --ff-only origin/development
-  #         git push origin main
+          git fetch origin main
+          git fetch origin development
+          git checkout main
+          git merge --ff-only origin/development
+          git push origin main
 
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
