@@ -3,12 +3,14 @@ from climbing_analysis.decorators import log_call
 from climbing_analysis.pose.utils import load_df_list, load_pickle
 from climbing_analysis.ephys.utils import *
 from climbing_analysis.ephys.spike_sorting import *
+from climbing_analysis.ephys.lfp import morlet_lfp
 from climbing_analysis.ephys.events import get_camera_events
 
 class ClimbingSessionData:
     """
     Class for loading in all relevant pose and ephys data during climbing session.
     Requires processing of video data for pose estimation to be stored within data directory in 'PoseData' folder.
+    
     Use:
     from climbing_analysis.data.session_data import ClimbingSessionData
     csession = ClimbingSessionData('path/to/data/directory')
@@ -27,6 +29,9 @@ class ClimbingSessionData:
         self.experiment_no = 'experiment1'
         self.recording_no = 'recording1'
         self.sorter_method = 'kilosort4'
+
+        # For data initialization
+        self.lfp_recording_loaded = False
 
         # Run data checks and get events
         self.check_pose()
@@ -75,6 +80,16 @@ class ClimbingSessionData:
         """
         self.sorter = load_phy_sorting(self.sorting_path)
 
+    def get_lfp_data(self):
+        """
+        Gets LFP data (currently stored in a separate recording node that is hardcoded)
+        stores:
+            self.lfp: open ephys object, containing lfp data
+        """
+        self.lfp = get_lfp(self.session_path)
+        self.lfp_shape = self.lfp.samples.shape
+        self.lfp_recording_loaded = True
+
     @log_call(label='recording', type='load')
     def get_recording(self):
         """
@@ -85,6 +100,7 @@ class ClimbingSessionData:
         self.recording = read_data(data_path=str(self.session_path), rec_type=self.sorting_params['rec_type'])
         self.probe = create_probe(self.sorting_params['probe_manufacturer'],self.sorting_params['probe_id'], self.sorting_params['channel_map'])
         self.recording.set_probe(self.probe,group_mode='by_shank')
+
 
     @log_call(label='event data', type='load')
     def get_event_data(self):
@@ -122,7 +138,18 @@ class ClimbingSessionData:
             spikes, kinematics, mirror_kinematics = plot_session_psth([unit_id],self.sorter, self.pose_df_list, self.frame_captures, self.stances, node=node, epoch_loc=epoch_loc, save_fig=save_fig)
         else:
             print('not all data loaded.')
-
+    
+    @log_call(label='morlet spectrogram', type='plot')
+    def plot_morlet_spectrogram(self, channel, node='r_hindpaw', epoch_loc='start', freqs=np.arange(2,40,1), n_cycles=None, save_fig=False):
+        """
+        Plots spectrogram for given channel using morlet wavelet from MNE package.
+        """
+        if self.lfp_recording_loaded == False:
+            self.get_lfp_data()
+        
+        lfp_chan = self.lfp.get_samples(start_sample_index=0,end_sample_index=self.lfp_shape[0],selected_channels=[channel])
+        power_z = morlet_lfp(lfp_chan[:,0],self.pose_df_list,self.frame_captures,self.stances,node=node,epoch_loc=epoch_loc,freqs=freqs, n_cycles=n_cycles, save_fig=save_fig)
+    
     @property
     def unit_ids(self):
         """

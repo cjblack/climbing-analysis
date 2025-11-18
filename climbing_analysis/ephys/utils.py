@@ -27,6 +27,7 @@ def get_lfp(data_path: str, node_idx=0, rec_idx=0):
     """
     session = Session(data_path)
     continuous = session.recordnodes[node_idx].recordings[rec_idx].continuous[0]
+    
     return continuous
 
 def create_probe(probe_manufacturer: str, probe_id: str, channel_map: str):
