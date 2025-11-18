@@ -1,3 +1,4 @@
+[![Unit Test](https://github.com/cjblack/climbing-analysis/actions/workflows/session_class_test.yml/badge.svg)](https://github.com/cjblack/climbing-analysis/actions/workflows/session_class_test.yml)
 
 Basic analysis tools for data collected during climbing
 
