@@ -8,6 +8,7 @@ import glob
 import h5py
 from pathlib import Path
 import pickle
+import h5py
 
 
 
@@ -55,6 +56,38 @@ def load_df_list(df_list_filename):
         dflist.append(df)    
 
     return dflist
+
+def save_df_list(df_list):
+    """
+    Save list of data frames from SLEAP
+    """
+    df_names = []
+    dates_ = []
+    id_ = df_list[0].attrs['Id']
+    type_ = df_list[0].attrs['Type']
+    date_ = df_list[0].attrs['Date']
+    path_ = df_list[0].attrs['Path']
+    trial_ = df_list[0].attrs['Trial']
+
+    for df in df_list:
+        trial_ = df.attrs['Trial']
+        date_ = df.attrs['Date']
+        dates_.append(date_)
+        name_ = date_+'_'+trial_
+        df_names.append(name_) # set df name as trial
+    unique_dates = np.unique(dates_)
+    sub_path_ = id_+'_'+type_+'_'#+date_+'_DFs.h5'
+    #file_name = path_ / sub_path_
+    if len(unique_dates) == 1:
+        sub_path_ = sub_path_ + unique_dates[0]+ '_DFS.h5'
+        file_name = path_ / sub_path_
+    else:
+        sub_path_ = sub_path_ + 'Batch_DFS.h5'
+        file_name = path_ / sub_path_
+    with pd.HDFStore(file_name, mode='w') as store:
+        for name, df in zip(df_names, df_list):
+            store.put(name,df)
+            store.get_storer(name).attrs.metadata = df.attrs
 
 def create_df(locs, node_locs,fps=200):
     '''
