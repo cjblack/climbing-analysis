@@ -1,4 +1,5 @@
 from pathlib import Path
+import xmltodict
 from climbing_analysis.decorators import log_call
 from climbing_analysis.pose.utils import load_df_list, load_pickle
 from climbing_analysis.ephys.utils import *
@@ -80,6 +81,7 @@ class ClimbingSessionData:
         """
         self.sorter = load_phy_sorting(self.sorting_path)
 
+    @log_call(label='lfp data', type=load)
     def get_lfp_data(self):
         """
         Gets LFP data (currently stored in a separate recording node that is hardcoded)
@@ -89,6 +91,24 @@ class ClimbingSessionData:
         self.lfp = get_lfp(self.session_path)
         self.lfp_shape = self.lfp.samples.shape
         self.lfp_recording_loaded = True
+    
+    @log_call(label='channel map', type='load')
+    def get_acquisition_channel_map(self, chan_count=64):
+        """
+        Gets channel mapping if stored in acquisition settings *CURRENTLY FOR OPEN EPHYS ACQUISTION ONLY*
+        """
+        
+        self.acquisition_channel_map = np.zeros((chan_count,1))
+        xml_loc = self.session_path / 'Record Node 9/settings.xml'
+        with open(xml_loc, 'r') as f:
+            xml_data = xmltodict.parse(f.read())
+        processors = xml_data['SETTINGS']['SIGNALCHAIN']['PROCESSOR']
+        for proc in processors:
+            if proc['@name'] == 'Channel Map':
+                chan_map = proc['CUSTOM_PARAMETERS']['STREAM'][0]['CH']
+                for i in range(chan_count):
+                    self.acquisition_channel_map[i,0]=int(chan_map[i]['@index'])
+
 
     @log_call(label='recording', type='load')
     def get_recording(self):

@@ -1,0 +1,15 @@
+matplotlib
+mne
+numpy
+pandas
+pip
+pytest
+tables
+statsmodels
+h5py
+scipy
+PyYAML
+open-ephys-python-tools
+scikit-learn
+spikeinterface
+xmltodict

@@ -19,6 +19,7 @@ dependencies:
   - h5py
   - scipy
   - yaml
+  - xmltodict
   - pip:
     - open-ephys-python-tools
     - scikit-learn
