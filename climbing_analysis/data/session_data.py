@@ -140,7 +140,7 @@ class ClimbingSessionData:
             print('not all data loaded.')
     
     @log_call(label='morlet spectrogram', type='plot')
-    def plot_morlet_spectrogram(self, channel, node='r_hindpaw', epoch_loc='start', freqs=np.arange(2,40,1), n_cycles=None, save_fig=False):
+    def plot_morlet_spectrogram(self, channel, node='r_hindpaw', epoch_loc='start', freqs=np.arange(2,40,1), n_cycles=None, xlim_=[-0.5,0.5],save_fig=False):
         """
         Plots spectrogram for given channel using morlet wavelet from MNE package.
         """
@@ -148,7 +148,8 @@ class ClimbingSessionData:
             self.get_lfp_data()
         
         lfp_chan = self.lfp.get_samples(start_sample_index=0,end_sample_index=self.lfp_shape[0],selected_channels=[channel])
-        power_z = morlet_lfp(lfp_chan[:,0],self.pose_df_list,self.frame_captures,self.stances,node=node,epoch_loc=epoch_loc,freqs=freqs, n_cycles=n_cycles, save_fig=save_fig)
+        power_z = morlet_lfp(lfp_chan[:,0],self.pose_df_list,self.frame_captures,self.stances,node=node,epoch_loc=epoch_loc,freqs=freqs, n_cycles=n_cycles, xlim_=xlim_, save_fig=save_fig)
+        return power_z
     
     @property
     def unit_ids(self):
