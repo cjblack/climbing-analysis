@@ -81,7 +81,7 @@ class ClimbingSessionData:
         """
         self.sorter = load_phy_sorting(self.sorting_path)
 
-    @log_call(label='lfp data', type=load)
+    @log_call(label='lfp data', type='load')
     def get_lfp_data(self):
         """
         Gets LFP data (currently stored in a separate recording node that is hardcoded)
