@@ -146,7 +146,7 @@ class ClimbingSessionData:
             self.analyzer = load_analyzer(analyzer_path)
 
     @log_call(label='psth', type='plot')
-    def plot_psth(self, unit_id, node='r_hindpaw', epoch_loc='start', save_fig=False):
+    def plot_psth(self, unit_id, node='r_hindpaw', epoch_loc='start', ylim_=[0,100],save_fig=False):
         """
         Plot peri-stimulus time histograms from the climbing session for different nodes with respect to different movements
         inputs:
@@ -155,7 +155,7 @@ class ClimbingSessionData:
             save_fig: bool | str -> False if no plot, directory string if you want to store plot. Will update in the future
         """
         if (unit_id in self.unit_ids) and (self.sorter) and (self.pose_df_list) and (self.stances) and (self.frame_captures):
-            spikes, kinematics, mirror_kinematics = plot_session_psth([unit_id],self.sorter, self.pose_df_list, self.frame_captures, self.stances, node=node, epoch_loc=epoch_loc, save_fig=save_fig)
+            spikes, kinematics, mirror_kinematics = plot_session_psth([unit_id],self.sorter, self.pose_df_list, self.frame_captures, self.stances, node=node, epoch_loc=epoch_loc, ylim_=ylim_,save_fig=save_fig)
         else:
             print('not all data loaded.')
     

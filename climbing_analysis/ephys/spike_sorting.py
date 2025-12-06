@@ -9,12 +9,15 @@ from climbing_analysis.ephys.utils import *
 from climbing_analysis.pose.utils import pixels_to_cm
 from scipy.ndimage import gaussian_filter1d
 
+PARAM_PATH = Path(__file__).resolve().parent / 'sorting_params'
+
 
 def sort_spikes(data_path: str, param_file:str): #rec_type:str = 'openephys', sorter='kilosort4', probe_manufacturer: str = 'cambridgeneurotech', probe_id: str = 'ASSY-236-H5', channel_map = 'h5_channel_map.npy'):
     """
     Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe
     """
     # Load sorting params
+    param_file = PARAM_PATH / param_file
     sorting_params = get_sorting_params(param_file)
 
     rec_type = sorting_params['rec_type']
@@ -77,7 +80,7 @@ def plot_waveform(wfs, channel):
     plt.show()
 
 
-def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
+def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], ylim_=[0,100],bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
     """
     Plot peristimulus time histogram from session
     """
@@ -189,13 +192,14 @@ def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='
         ax[1].axvline(0, linestyle='--',color='red', linewidth=0.75, alpha=0.5)
         ax[1].set_ylabel('Firing rate (spikes/s)')
     kin_ts = np.linspace(-0.5,0.5,200)
+    ax[1].set_ylim(ylim_)
     for ki in kin_to_store:
         if len(ki) == 200:
             ax[2].plot(kin_ts,ki,color='black',alpha=0.5)
     ax[2].set_ylabel('Distance (cm)')
     ax[2].set_xlabel('Time (s)')
     ax[2].axvline(0, linestyle='--',color='red', linewidth=0.75, alpha=0.5)
-
+    ax[2].set_ylim([-5.,5.])
 
     if save_fig:
         plt.savefig(save_fig+f'/{node}_movement-{epoch_loc}_unit_id{unit_ids[0]}_spikeraster.png')
