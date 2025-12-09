@@ -1,5 +1,6 @@
 from pathlib import Path
 import xmltodict
+import pandas as pd
 from climbing_analysis.decorators import log_call
 from climbing_analysis.pose.utils import load_df_list, load_pickle
 from climbing_analysis.ephys.utils import *
@@ -79,7 +80,8 @@ class ClimbingSessionData:
         stores:
             self.sorter: spikeinterface sorting object, containing spike sorted data
         """
-        self.sorter = load_phy_sorting(self.sorting_path)
+        self.sorter = load_phy_sorting(self.sorting_path) # return sorting object
+        self.cluster_df = pd.read_csv(self.sorting_path / 'cluster_group.tsv',sep='\t') # this will return the labeled clusters from phy2 GUI
 
     @log_call(label='lfp data', type='load')
     def get_lfp_data(self):
@@ -119,7 +121,7 @@ class ClimbingSessionData:
         """
         self.recording = read_data(data_path=str(self.session_path), rec_type=self.sorting_params['rec_type'])
         self.probe = create_probe(self.sorting_params['probe_manufacturer'],self.sorting_params['probe_id'], self.sorting_params['channel_map'])
-        self.recording.set_probe(self.probe,group_mode='by_shank')
+        self.recording = self.recording.set_probe(self.probe,group_mode='by_shank') # have to rename to set probe
 
 
     @log_call(label='event data', type='load')
@@ -144,6 +146,13 @@ class ClimbingSessionData:
         analyzer_path = self.sorting_path.resolve().parent.parent / 'analyzer_folder'
         if analyzer_path.is_dir():
             self.analyzer = load_analyzer(analyzer_path)
+    
+    @log_call(label='waveforms', type='load')
+    def get_waveforms(self):
+        if self.analyzer:
+            self.waveforms = self.analyzer.get_extension('waveforms')
+        
+
 
     @log_call(label='psth', type='plot')
     def plot_psth(self, unit_id, node='r_hindpaw', epoch_loc='start', ylim_=[0,100],save_fig=False):

@@ -5,6 +5,7 @@ from spikeinterface import create_sorting_analyzer
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.extractors import read_phy
 from spikeinterface.core import load_sorting_analyzer
+import spikeinterface.widgets as sw
 from climbing_analysis.ephys.utils import *
 from climbing_analysis.pose.utils import pixels_to_cm
 from scipy.ndimage import gaussian_filter1d
@@ -69,6 +70,9 @@ def load_analyzer(directory):
     analyzer = load_sorting_analyzer(directory)
     return analyzer
 
+def get_waveforms():
+    print('getting waveforms...')
+
 def plot_waveform(wfs, channel):
     """
     Plot spike waveforms
@@ -76,8 +80,14 @@ def plot_waveform(wfs, channel):
     for x in range(300):
         plt.plot(wfs[x, :, channel], color='purple', alpha=0.5)
     plt.plot(np.mean(wfs[:,:,channel],axis=0),color='black', linewidth=2)
-    plt.savefig('D:/ClimbingData/SOD1/WT/Example_unit72_waveform_average.pdf')
     plt.show()
+
+def plot_autocorrelogram(sorter,unit_ids):
+    if not isinstance(unit_ids,list):
+        unit_ids = [unit_ids]
+    w = sw.plot_autocorrelograms(sorter, unit_ids=unit_ids)
+    plt.show()
+    return w
 
 
 def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], ylim_=[0,100],bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
