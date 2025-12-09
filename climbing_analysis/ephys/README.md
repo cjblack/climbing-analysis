@@ -5,5 +5,6 @@ Param files are currently located in `climbing_analysis` > `ephys` > `sorting_pa
 
 ```python
 from climbing_analysis.ephys.spike_sorting import sort_spikes
-sorting, recording, probe, analyzer = sort_spikes(data_path='path/to/structure.oebin', param_file='param_file.yaml')
+param_file = 'climbing_sorting_params.yaml'
+sorting, recording, probe, analyzer = sort_spikes(data_path='path/to/structure.oebin', param_file=param_file)
 ```
