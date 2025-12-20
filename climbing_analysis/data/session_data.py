@@ -189,6 +189,27 @@ class ClimbingSessionData:
             return self.sorter.get_unit_ids()
         else:
             raise AttributeError('sorting object does not exist, please run spike sorting.')
+    
+    @property
+    def good_units(self):
+        """
+        Property storing the 'good' units from the cluster groups. This will only work if data has been labeled
+        """
+        if self.cluster_df:
+            return self.cluster_df.loc[self.cluster_df['group']=='good']['cluster_id'].to_numpy()
+        else:
+            raise AttributeError('cluster data frame does not exist, please run spike sorting.')
+    
+    @property
+    def good_unit_idx(self):
+        """
+        Property storing the 'good' unit indices from the cluster groups, which is what is needed for plotting.
+        """
+        if self.cluster_df:
+            return self.cluster_df[self.cluster_df['group']=='good'].index.to_list()
+        else:
+            raise AttributeError('cluster data frame does not exist, please run spike sorting.')
+        
     @property
     def trial_number(self):
         """

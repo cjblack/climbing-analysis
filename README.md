@@ -16,7 +16,7 @@ param_file = 'path/to/paramfile.yaml'
 # Sort spikes
 sorting, recording, probe, analyzer = sort_spikes(data_path=data_path, param_file=param_file)
 
-````
+```
 
 Data can then be viewed with phy2.
 
