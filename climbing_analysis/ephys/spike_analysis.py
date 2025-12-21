@@ -36,7 +36,7 @@ def extract_raster_movements(unit_ids, sorting, dflist, frame_captures, stances,
 
     node_xy = np.unique(dflist[0].keys())
     nodes = np.unique([n[:-2] if n.endswith(('_X','_Y')) else n for n in node_xy]).tolist()
-    nodes.remove(node)
+    #nodes.remove(node)
 
     fig, ax =plt.subplots(3,1, sharex=True, gridspec_kw={'height_ratios': [4, 1, 1]})
     spike_train_total = []
@@ -118,8 +118,27 @@ def extract_raster_movements(unit_ids, sorting, dflist, frame_captures, stances,
         spikes_to_store = spikes_prune
         kin_to_store = kin_prune
         kin_to_store_rn = kin_prune_rn
-    return kin_to_store, kin_to_store_rn, spikes_to_store
+    return kin_to_store, kin_to_store_rn, spikes_to_store, nodes
 
+
+def plot_fr_movement(mvarray,spks):
+    """
+    Work in progress...
+    """
+    no_trials = len(spks)
+    corr_list = []
+    rate_list = []
+    for i in range(no_trials):
+        spike_times = spks[i]
+        corr_mat = np.corrcoef(mvarray[i][:4])
+        corrs_ = corr_mat[np.triu_indices_from(corr_mat,k=1)] # get correlations along upper diag
+        corr_list.append(corrs_)
+        pre_spks = np.sum((spike_times >=-0.5) & (spike_times <0.3))
+        post_spks = np.sum((spike_times>=-0.1) & (spike_times<=0.1))
+        pre_rate = pre_spks/0.3
+        post_rate = post_spks/0.3
+        rate_drop = post_spks-pre_spks
+        rate_list.append(rate_drop)
 
 def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], ylim_=[0,100],bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
     """
