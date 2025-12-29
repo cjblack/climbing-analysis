@@ -195,7 +195,7 @@ class ClimbingSessionData:
         """
         Property storing the 'good' units from the cluster groups. This will only work if data has been labeled
         """
-        if self.cluster_df:
+        if self.cluster_df is not None:
             return self.cluster_df.loc[self.cluster_df['group']=='good']['cluster_id'].to_numpy()
         else:
             raise AttributeError('cluster data frame does not exist, please run spike sorting.')
@@ -205,7 +205,7 @@ class ClimbingSessionData:
         """
         Property storing the 'good' unit indices from the cluster groups, which is what is needed for plotting.
         """
-        if self.cluster_df:
+        if self.cluster_df is not None:
             return self.cluster_df[self.cluster_df['group']=='good'].index.to_list()
         else:
             raise AttributeError('cluster data frame does not exist, please run spike sorting.')
