@@ -11,7 +11,6 @@ from scipy.ndimage import gaussian_filter1d
 import mne
 
 
-#def load_lfp():
 
 
 def epoch_lfp(data, dflist, frame_captures, stances, node='r_forepaw',epoch_loc='start',xlim_=[-0.5,0.5], bin_size=0.02, smooth_sigma=1.0, fs=30000, prune_trials=True,save_fig=None):

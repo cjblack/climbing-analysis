@@ -39,6 +39,23 @@ class ClimbingSessionData:
         self.check_pose()
         self.check_ephys()
         self.get_event_data()
+    
+    def __str__(self):
+        """
+        Returns details about the climbing session.
+        """
+        return "".join(
+
+            [
+                "\nClimbing Session Object\n",
+                f"\n    Directory: {self.session_path}",
+                f"\n    Trial count: {self.trial_number}",
+                f"\n    Node count: {self.node_number}",
+                f"\n    Recording information:",
+                f"\n        {self.probe}",
+                f"\n        {self.recording}"
+            ]
+        )
 
     @log_call(label='pose data check')
     def check_pose(self):
@@ -91,6 +108,7 @@ class ClimbingSessionData:
             self.lfp: open ephys object, containing lfp data
         """
         self.lfp = get_lfp(self.session_path)
+        self.lfp_samples = self.lfp.get_samples(start_sample_index=0, end_sample_index=-1)
         self.lfp_shape = self.lfp.samples.shape
         self.lfp_recording_loaded = True
     
@@ -213,9 +231,19 @@ class ClimbingSessionData:
     @property
     def trial_number(self):
         """
-        Property storing number of trials for the session, extracted from the length of the self.pose_df_list
+        Property storing number of trials for the session, extracted from the length of the self.pose_df_list.
         """
         if self.pose_df_list:
             return len(self.pose_df_list)
+        else:
+            raise AttributeError('pose data does not exist, please add to root folder.')
+        
+    @property
+    def node_number(self):
+        """
+        Property storing number of nodes for the session, computed as 0.5*length of the number of keys in the pose df list (x and y coordinates).
+        """
+        if self.pose_df_list:
+            return int(self.pose_df_list[0].shape[1]/2)
         else:
             raise AttributeError('pose data does not exist, please add to root folder.')

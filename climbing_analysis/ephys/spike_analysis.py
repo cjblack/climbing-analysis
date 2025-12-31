@@ -28,6 +28,7 @@ def plot_autocorrelogram(sorter,unit_ids):
 
 
 
+
 def extract_raster_movements(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], ylim_=[0,100],bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
     """
     Extract spike rasters and node movements with respect to target node
