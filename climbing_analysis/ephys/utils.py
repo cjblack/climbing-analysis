@@ -4,6 +4,7 @@ import urllib.error
 import numpy as np
 import spikeinterface.extractors as se
 import yaml
+import json
 from spikeinterface.core import write_binary_recording
 from probeinterface import get_probe, read_probeinterface
 from open_ephys.analysis import Session

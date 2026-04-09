@@ -7,7 +7,7 @@ Currently only tested on open ephys data with cambridge neurotech H5 probe, runn
 
 ```python
 
-from climbing_analysis.ephys.spike_sorting import sorting spikes
+from climbing_analysis.ephys.spike_sorting import sort_spikes
 
 # Set data directory and param file
 data_path = 'path/to/datafolder'
@@ -19,6 +19,36 @@ sorting, recording, probe, analyzer = sort_spikes(data_path=data_path, param_fil
 ```
 
 Data can then be viewed with phy2.
+
+# Processing LFP
+Custom pre-processing of raw lfp traces
+
+```python
+from climbing_analysis.ephys.lfp import process_lfp
+
+data_path = 'path/to/datafolder'
+
+# chunk, filter, and downsample
+process_lfp(data_path)
+
+```
+
+# Process a session
+Process workflow ingests recording session into DataJoint pipeline. Does not perform signal processing yet, simply registers and structures data in the database.
+
+Ensure you have created a .env file with the relevant fields that allows you to link to DB of choice.
+
+```shell
+python workflows.process_session "path/to/datafolder"
+```
+
+```python
+from workflows.process_session import run
+data_path = "path/to/datafolder"
+run(data_path)
+
+```
+
 
 # Loading climbing session
 This is for loading ephys and pose data together in one session object. You'll need to have relevant pose data stored in a `PoseData` folder within the folder containing your open ephys acquired data.

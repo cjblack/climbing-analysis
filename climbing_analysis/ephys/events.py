@@ -2,6 +2,7 @@ from open_ephys.analysis import Session
 from scipy.signal import hilbert, butter, filtfilt, sosfiltfilt, iirnotch
 from scipy.ndimage import label
 import numpy as np
+import pandas as pd
 
 
 def lfp_filter(data, fs, band=(0.1, 100), notch_freq=50.0, notch_Q=30.0):
@@ -71,6 +72,7 @@ def detect_camera_on(signal, fs, frame_rate=200, threshold_ratio=0.3, min_bout_d
 
     bouts = []
     frame_captures = []
+    frame_rows = []
     for i in range(1, num_features + 1):
         indices = np.where(labeled_array == i)[0]
         duration_sec = len(indices) / fs
@@ -85,6 +87,16 @@ def detect_camera_on(signal, fs, frame_rate=200, threshold_ratio=0.3, min_bout_d
             edges = np.where(np.diff(binary_.astype(int)) == 1)[0]+1
             frame_starts = edges+start_idx
             frame_captures.append(frame_starts)
+            df = pd.DataFrame({
+                "video_index": i,
+                "frame_id": np.arange(len(frame_starts)),
+                "sample_index": frame_starts
+
+            })
+            frame_rows.append(df)
+
+    frame_map = pd.concat(rows, ignore_index=True)
+    frame_map.to_csv("video_alignment.csv", index=False)
 
     return bouts, envelope, frame_captures
 

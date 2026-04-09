@@ -9,6 +9,8 @@ def log_call(label=None, type='run'):
                 func_type = 'RUNNING:'
             elif type == 'load':
                 func_type = 'LOADING:'
+            elif type == 'process':
+                func_type = 'PROCESSING.'
             elif type=='plot':
                 func_type = 'PLOTTING:'
             print(f'{func_type} {name}...')

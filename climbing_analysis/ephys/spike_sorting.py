@@ -51,7 +51,7 @@ def sorting_analyzer(sorting, recording, data_path):
     """
     folder = data_path / 'analyzer_folder'
     analyzer = create_sorting_analyzer(sorting=sorting, recording=recording, format='binary_folder',return_in_uV=True,folder=folder)
-    analyzer.compute(['random_spikes', 'waveforms', 'templates', 'noise_levels'])
+    analyzer.compute(['random_spikes', 'waveforms', 'templates', 'noise_levels', 'spike_locations'])
     _ = analyzer.compute('spike_amplitudes')
     _ = analyzer.compute('principal_components', n_components=5, mode="by_channel_local")
     return analyzer

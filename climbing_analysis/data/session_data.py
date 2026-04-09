@@ -5,7 +5,7 @@ from climbing_analysis.decorators import log_call
 from climbing_analysis.pose.utils import load_df_list, load_pickle
 from climbing_analysis.ephys.utils import *
 from climbing_analysis.ephys.spike_sorting import *
-from climbing_analysis.ephys.lfp import morlet_lfp
+from climbing_analysis.ephys.lfp import morlet_lfp, process_lfp
 from climbing_analysis.ephys.events import get_camera_events
 
 class ClimbingSessionData:
@@ -101,17 +101,24 @@ class ClimbingSessionData:
         self.cluster_df = pd.read_csv(self.sorting_path / 'cluster_group.tsv',sep='\t') # this will return the labeled clusters from phy2 GUI
 
     @log_call(label='lfp data', type='load')
-    def get_lfp_data(self):
+    def get_lfp_samples(self, start_sample_index, end_sample_index):
         """
         Gets LFP data (currently stored in a separate recording node that is hardcoded)
         stores:
             self.lfp: open ephys object, containing lfp data
         """
         self.lfp = get_lfp(self.session_path)
-        self.lfp_samples = self.lfp.get_samples(start_sample_index=0, end_sample_index=-1)
-        self.lfp_shape = self.lfp.samples.shape
-        self.lfp_recording_loaded = True
+        
+        #self.lfp_samples = self.lfp.get_samples(start_sample_index=0, end_sample_index=-1)
+        #self.lfp_shape = self.lfp.samples.shape
+        #self.lfp_recording_loaded = True
+        return self.lfp.get_samples(start_sample_index=start_sample_index, end_sample_index=end_sample_index)
     
+    @log_call(label='preprocess lfp', type='process')
+    def preprocess_lfp(self):
+        "Chunks, filters, and downsamples the data, storing as a memmap."
+        process_lfp(self.session_path)
+        
     @log_call(label='channel map', type='load')
     def get_acquisition_channel_map(self, chan_count=64):
         """
@@ -191,11 +198,12 @@ class ClimbingSessionData:
         """
         Plots spectrogram for given channel using morlet wavelet from MNE package.
         """
-        if self.lfp_recording_loaded == False:
-            self.get_lfp_data()
+        #if self.lfp_recording_loaded == False:
+        #    self.get_lfp_data()
         
-        lfp_chan = self.lfp.get_samples(start_sample_index=0,end_sample_index=self.lfp_shape[0],selected_channels=[channel])
-        power_z = morlet_lfp(lfp_chan[:,0],self.pose_df_list,self.frame_captures,self.stances,node=node,epoch_loc=epoch_loc,freqs=freqs, n_cycles=n_cycles, xlim_=xlim_, save_fig=save_fig)
+        #lfp_chan = self.lfp.get_samples(start_sample_index=0,end_sample_index=self.lfp_shape[0],selected_channels=[channel])
+        #power_z = morlet_lfp(lfp_chan[:,0],self.pose_df_list,self.frame_captures,self.stances,node=node,epoch_loc=epoch_loc,freqs=freqs, n_cycles=n_cycles, xlim_=xlim_, save_fig=save_fig)
+        power_z = 0
         return power_z
     
     @property

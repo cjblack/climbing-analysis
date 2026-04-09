@@ -1,16 +1,197 @@
 from pathlib import Path
+import numpy as np
+import zarr
+import pandas as pd
+import json
 import matplotlib.pyplot as plt
 from spikeinterface.sorters import run_sorter
 from spikeinterface import create_sorting_analyzer
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.extractors import read_phy
 from climbing_analysis.ephys.utils import *
-from climbing_analysis.pose.utils import pixels_to_cm, get_trial_order
+from climbing_analysis.utils import saveas_json, saveas_dataframe, load_json
+from climbing_analysis.ephys.preprocessing.chunking import iter_chunks
 from climbing_analysis.ephys.preprocessing.filters import filter_lfp
+from climbing_analysis.pose.utils import pixels_to_cm, get_trial_order
 from scipy.ndimage import gaussian_filter1d
+from scipy.signal import resample_poly
 import mne
 
 
+
+def process_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_duration_s=1.0, n_aux_chans = 11, filter_info={"n_": 50.0, "bp_":(0.1,100.0), "quality": 30.0}, dtype="float32", storage_format="memmap"):
+    """Performs basic pre-processing of LFP data from .continuous recordings. Chunks, filters, and downsamples data to be stored as a memmap for later access.
+
+
+    Args:
+        data_path (Path): Folder path of recorded data
+        fs_new (float, optional): Sampling rate to downsample to. Defaults to 1000.0.
+        chunk_duration_s (float, optional): Duration in seconds of data chunks. Defaults to 10.0.
+        pad_duration_s (float, optional): Duration in seconds for data padding - for filtering. Defaults to 1.0.
+        n_aux_chans (int, optional): Number of auxiliary data channels (accelerometer + digital/analog inputs). Defaults to 11.
+        filter_info (dict, optional): Dictionary containing filter settings for notch "n_", bandpass "bp_" (low, high), and quality "quality". Defaults to {"n_": 50.0, "bp_":(0.1,100.0), "quality": 30.0}.
+        dtype (str, optional): Datatype to store chunked data as. Defaults to "float32".
+
+    Returns:
+        dict: High level information of processed LFP data.
+    """
+    lfp_data = get_lfp(data_path = data_path, node_idx=0, rec_idx=0)
+    output_path = data_path / 'lfp_downsampled.dat'
+    zarr_path = data_path / 'zarr_out'
+    metadata_path = data_path / 'lfp_metadata.json'
+    chunkmap_path = data_path / 'lfp_chunk_map.csv'
+    fs_og = lfp_data.metadata['sample_rate']
+    n_samples, n_channels = lfp_data.samples.shape
+    n_channels = n_channels #- n_aux_chans
+    # calculate end data shape
+    n_samples_out = int(np.ceil(n_samples * fs_new / fs_og))
+    # calculate chunk length
+    chunk_len_out = int(chunk_duration_s * fs_new)
+
+    lfp_metadata = dict({
+        "data_loc_original": str(data_path.as_posix()),
+        "data_loc_processed": str(output_path.as_posix()),
+        "data_loc_chunk_map": str(chunkmap_path.as_posix()),
+        "n_channels": n_channels,
+        "fs_original": fs_og,
+        "fs_processed": fs_new,
+        "n_samples_original": n_samples,
+        "n_samples_processed": n_samples_out,
+        "dtype_processed": dtype,
+        "shape_processed": [n_samples_out, n_channels],
+        "preprocessed_notch_filter": filter_info["n_"],
+        "preprocessed_bandpass_filter": filter_info["bp_"],
+        "preprocessed_filter_quality": filter_info["quality"]
+    })
+
+    if storage_format == 'memmap':
+        lfp_out = np.memmap(
+            output_path,
+            dtype=dtype,
+            mode="w+",
+            shape=(n_samples_out, n_channels)
+        )
+    
+    elif storage_format == 'zarr'
+        root = zarr.open_group(str(zarr_path), mode="w")
+        lfp_out = root.create_dataset(
+            'lfp',
+            shape = (n_samples_out, n_channels),
+            chunks = (chunk_len_out, n_channels),
+            dtype = dtype
+        )
+
+        # create attributes
+        for k, v in lfp_metadata.items():
+            root.attrs[k] = v
+    
+    lfp_loader = lambda start, end: lfp_data.get_samples(start,end)
+
+    write_pos = 0 # to deal with rounding errors
+    chunk_map = []
+    for core_start, core_end, chunk in process_lfp_chunks(
+        lfp_loader,
+        n_samples,
+        n_channels,
+        fs_og,
+        fs_new,
+        chunk_duration_s,
+        pad_duration_s
+    ):
+        out_start = write_pos
+        out_end = write_pos + chunk.shape[0]
+        lfp_out[out_start:out_end, :] = chunk.astype("float32")
+        
+        chunk_map.append({
+            "og_start": core_start,
+            "og_end": core_end,
+            "processed_start": out_start,
+            "processed_end": out_end
+        })
+
+        write_pos = out_end
+    
+    if storage_format == "memmap"
+        lfp_out.flush() # make sure to flush memory changes to disk
+
+    # save metadata and chunk information
+    saveas_json(metadata_path, lfp_metadata)
+    saveas_dataframe(chunkmap_path, chunk_map)
+
+    return {"output_path": output_path, "shape": (n_samples_out, n_channels), "dtype": dtype, "fs": fs_new}
+
+
+    
+    
+def process_lfp_chunks(lfp_loader, n_samples: int, n_channels: int, fs_og: int, fs_new: int, chunk_duration_s: float, pad_duration_s: float):
+    """Processes chunks of LFP data by running filters and downsampling.
+
+    Args:
+        lfp_loader (func): Function to grab chunks of LFP data.
+        n_samples (int): Number of samples in recording.
+        n_channels (int): Number of channels in recording (includes auxiliary channels as well as ephys channels).
+        fs_og (int): Original sampling rate from recording.
+        fs_new (int): New sampling rate to downsample data to.
+        chunk_duration_s (float): Duration in seconds of LFP chunks.
+        pad_duration_s (float): Duration in seconds of padding for LFP chunks.
+
+    Yields:
+        core_start (int): Index for start of LFP data in padded chunk.
+        core_end (int): Index for end of LFP data in padded chunk.
+        ds_filtered_core(np.array): Array containing the filtered, and downsampled LFP core chunk.
+    """
+    chunk_size = int(chunk_duration_s*fs_og) # chunk duration in samples
+    pad_size = int(pad_duration_s*fs_og) # pad duration in samples
+    for read_start, read_end, core_start, core_end in iter_chunks(n_samples, chunk_size, pad_size):
+        chunk = lfp_loader(read_start, read_end)[:,:n_channels] # only use ephys channels
+        filtered = filter_lfp(chunk, fs_og) # filter chunk
+
+        trim_start = core_start - read_start
+        trim_end = trim_start + (core_end - core_start)
+        filtered_core = filtered[trim_start:trim_end]
+        ds_filtered_core = resample_poly(filtered_core, fs_new, fs_og, axis=0)
+
+        yield core_start, core_end, ds_filtered_core
+
+def load_processed_lfp(metadata_path, load_chunk_map=True):
+
+    metadata_path = Path(metadata_path)
+    metadata = load_json(metadata_path)
+
+    data_path = Path(metadata["data_loc_processed"])
+    if not data_path.is_absolute():
+        data_path = metadata_path.parent / data_path
+    lfp = np.memmap(
+        data_path,
+        dtype = metadata["dtype_processed"],
+        mode = "r",
+        shape =  metadata["shape_processed"]
+    )
+
+    chunk_map = None
+    if load_chunk_map and "data_loc_chunk_map" in metadata:
+        chunk_map_path = Path(metadata["data_lock_chunk_map"])
+        if not chunk_map_path.is_absolute():
+            chunk_map_path = metadata_path.parent / chunk_map_path
+        
+        if chunk_map_path.exists():
+            chunk_map = pd.read_csv(chunk_map_path)
+    
+    return lfp, metadata, chunk_map
+
+
+def get_lfp_samples(self, start_sample_index, end_sample_index):
+        """
+        Gets LFP data (currently stored in a separate recording node that is hardcoded)
+        stores:
+            self.lfp: open ephys object, containing lfp data
+        """
+        self.lfp = get_lfp(self.session_path)
+        
+        #self.lfp_samples = self.lfp.get_samples(start_sample_index=0, end_sample_index=-1)
+        #self.lfp_shape = self.lfp.samples.shape
+        #self.lfp_recording_loaded = True
+        return self.lfp.get_samples(start_sample_index=start_sample_index, end_sample_index=end_sample_index)
 
 
 def epoch_lfp(data, dflist, frame_captures, stances, node='r_forepaw',epoch_loc='start',xlim_=[-0.5,0.5], bin_size=0.02, smooth_sigma=1.0, fs=30000, prune_trials=True,save_fig=None):

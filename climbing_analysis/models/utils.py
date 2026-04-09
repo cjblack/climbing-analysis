@@ -16,7 +16,7 @@ def bin_spikes(spike_times, T, fs=200.0):
     return counts
 
 def extract_data_from_session(csession, fs=200.0):
-    unit_ids = csession.good_unit_idxs
+    unit_ids = csession.good_unit_idx
     sorting = csession.sorter
     dflist = csession.pose_df_list
     frame_captures = csession.frame_captures
