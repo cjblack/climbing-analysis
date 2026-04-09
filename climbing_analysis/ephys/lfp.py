@@ -72,7 +72,7 @@ def process_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_durat
             shape=(n_samples_out, n_channels)
         )
     
-    elif storage_format == 'zarr'
+    elif storage_format == 'zarr':
         root = zarr.open_group(str(zarr_path), mode="w")
         lfp_out = root.create_dataset(
             'lfp',
@@ -111,7 +111,7 @@ def process_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_durat
 
         write_pos = out_end
     
-    if storage_format == "memmap"
+    if storage_format == "memmap":
         lfp_out.flush() # make sure to flush memory changes to disk
 
     # save metadata and chunk information
