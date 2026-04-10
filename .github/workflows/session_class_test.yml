@@ -19,10 +19,12 @@ jobs:
           activate-environment: climbing_analysis
           python-version: 3.11 #3.9
           auto-activate: false
-      - name: Install missing dependencies
+      - name: Install missing dependencies for mne
         shell: bash -l {0}
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip 
+          python -m pip install "setuptools<82"
+          python -c "import pkg_resources; print('pkg_resources OK')"
       - name: Climbing Session Data loader test
         shell: bash -l {0}
         run: |
