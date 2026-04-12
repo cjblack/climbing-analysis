@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
 import urllib.error
+import xml.etree.ElementTree as ET
 import numpy as np
 import spikeinterface.extractors as se
 import yaml
-import json
 from spikeinterface.core import write_binary_recording
 from probeinterface import get_probe, read_probeinterface
 from open_ephys.analysis import Session
@@ -30,6 +30,11 @@ def get_lfp(data_path: str, node_idx=0, rec_idx=0):
     continuous = session.recordnodes[node_idx].recordings[rec_idx].continuous[0]
     
     return continuous
+
+def get_settings_xml(record_node_path: str):
+    tree = ET.parse(record_node_path + '/settings.xml')
+    root = tree.getroot()
+    return root
 
 def create_probe(probe_manufacturer: str, probe_id: str, channel_map: str):
     """

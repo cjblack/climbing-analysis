@@ -62,7 +62,7 @@ def discover_ephys_recordings(experiemnt_path: Path) -> list[dict[str, Any]]:
                 "recording_id": recording_id,
                 "recording_path": str(p.as_posix())
             })
-            
+
     return recordings
 
 
@@ -166,3 +166,20 @@ class EphysRecording(dj.Imported):
                 "recording_path": str(Path(row["recording_path"]).as_posix())
             })
         self.insert(inserts, skip_duplicates=True)
+
+@schema
+class ProcessedLFP(dj.Computed):
+    definition = """
+    -> EphysRecording
+    ---
+    storage_format: enum('zarr', 'memmap')
+    data_path: varchar(1024)
+    metadata_path='': varchar(1024)
+    fs_processed: float
+    n_samples_processed: bigint unsigned
+    n_channels: int
+    dtype_processed: varchar(32)
+    notch_freq: float
+    bandpass_low: float
+    bandpass_high: float
+    """
