@@ -65,8 +65,10 @@ def discover_ephys_recordings(experiemnt_path: Path) -> list[dict[str, Any]]:
 
     return recordings
 
+#---
+# MANUAL CORE TABLES
+#---
 
-# CORE TABLES
 
 @schema
 class Subject(dj.Manual):
@@ -90,8 +92,10 @@ class Session(dj.Manual):
 
     """
 
-
+# ---
 # IMPORTED
+# ---
+
 @schema
 class EphysRecordNode(dj.Imported):
     definition = """
@@ -99,6 +103,7 @@ class EphysRecordNode(dj.Imported):
     record_node_id: int
     ---
     record_node_path: varchar(512)
+    record_node_name = '' : varchar(512) # this would be more for nickname information, LFP, spikes, etc. 
     """
 
     def make(self, key):
@@ -167,12 +172,32 @@ class EphysRecording(dj.Imported):
             })
         self.insert(inserts, skip_duplicates=True)
 
+# ----
+# LOOKUP
+# ----
+
 @schema
-class ProcessedLFP(dj.Computed):
+class PreprocessMethod(dj.Lookup):
+    definition = """
+    method_name: varchar(32)
+    ---
+    description: varchar(255)
+    """
+    contents = [
+        {'method_name': 'lfp_preprocess', 'description': 'Chunk, filter, and downsample LFP data.'}
+    ]
+
+# ----
+# COMPUTE
+# ---
+
+@schema
+class PreprocessLFP(dj.Computed):
     definition = """
     -> EphysRecording
+    -> PreprocessMethod
     ---
-    storage_format: enum('zarr', 'memmap')
+    storage_format: enum('zarr', 'memmap') # zarr for HPC, memmap better for local
     data_path: varchar(1024)
     metadata_path='': varchar(1024)
     fs_processed: float
@@ -183,3 +208,7 @@ class ProcessedLFP(dj.Computed):
     bandpass_low: float
     bandpass_high: float
     """
+
+    def make(self, key):
+        
+ 
