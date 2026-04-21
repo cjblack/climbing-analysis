@@ -1,8 +1,6 @@
-name: climbing
+name: climbing_ci
 channels:
   - conda-forge
-  - pytorch
-  - nvidia
 dependencies:
   - python=3.11
   - numpy
@@ -23,9 +21,6 @@ dependencies:
   - pyyaml
   - pytest
   - pip
-  - pytorch
-  - pytorch-cuda=11.8
   - pip:
-      - kilosort[gui]
       - open-ephys-python-tools
       - spikeinterface

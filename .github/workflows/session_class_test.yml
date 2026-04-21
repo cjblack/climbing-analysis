@@ -15,8 +15,11 @@ jobs:
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
-          environment-file: environment_redux.yml
-          activate-environment: climbing
+          miniforge-version: latest
+          environment-file: environment_ci.yml
+          activate-environment: climbing_ci
+          conda-remove-defaults: "true"
+          channel-priority: strict
           python-version: 3.11 #3.9
           auto-activate: false
       - name: Install missing dependencies for mne
