@@ -211,4 +211,11 @@ class PreprocessLFP(dj.Computed):
 
     def make(self, key):
         
- 
+        record_node_path = Path((EphysRecordNode & key).fetch1("record_node_path"))
+        preprocessed_path = record_node_path / 'lfp'
+
+        if preprocessed_path.exists():
+            # load metadata
+
+        else:
+

@@ -1,3 +1,4 @@
+from pathlib import Path
 import json
 import pandas as pd
 
@@ -14,3 +15,8 @@ def load_json(file_path):
     with open(file_path, "r") as f:
         data = json.load(f)
     return data
+
+def check_and_make_directory(dir):
+    dir = Path(dir)
+    if not dir.exists():
+        dir.mkdir(exist_ok=True)

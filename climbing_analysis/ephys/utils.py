@@ -21,6 +21,7 @@ def read_data(data_path: str, rec_type: str = 'openephys'):
     if rec_type == 'openephys':
         recording = se.read_openephys(folder_path=data_path, stream_name='Record Node 109#Acquisition_Board-100.acquisition_board-B') # this is hardcoded to the initial rec node
     return recording
+
 def get_lfp(data_path: str, node_idx=0, rec_idx=0):
     """
     Extract LFP from recording session

@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+import xarray as xr
 import zarr
 import pandas as pd
 import json
@@ -37,7 +38,7 @@ def process_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_durat
     """
     lfp_data = get_lfp(data_path = data_path, node_idx=0, rec_idx=0)
     output_path = data_path / 'lfp_downsampled.dat'
-    zarr_path = data_path / 'zarr_out'
+    zarr_path = data_path / 'lfp'
     metadata_path = data_path / 'lfp_metadata.json'
     chunkmap_path = data_path / 'lfp_chunk_map.csv'
     fs_og = lfp_data.metadata['sample_rate']
@@ -73,13 +74,18 @@ def process_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_durat
         )
     
     elif storage_format == 'zarr':
-        root = zarr.open_group(str(zarr_path), mode="w")
-        lfp_out = root.create_dataset(
-            'lfp',
-            shape = (n_samples_out, n_channels),
-            chunks = (chunk_len_out, n_channels),
-            dtype = dtype
+        intialize_zarr_store(
+            zarr_path = zarr_path,
+            n_samples = n_samples_out,
+            n_channels = n_channels,
+            fs = fs_new,
+            chunk_len = chunk_len_out,
+            dtype = dtype,
+            attrs = lfp_metadata
         )
+
+        root = zarr.open_group(str(zarr_path), mode="a")
+        lfp_out = root['processed']
 
         # create attributes
         for k, v in lfp_metadata.items():
@@ -178,6 +184,53 @@ def load_processed_lfp(metadata_path, load_chunk_map=True):
             chunk_map = pd.read_csv(chunk_map_path)
     
     return lfp, metadata, chunk_map
+
+def intialize_zarr_store(
+        zarr_path: Path,
+        n_samples: int,
+        n_channels: int,
+        fs: float,
+        chunk_len: int,
+        dtype: str,
+        attrs: dict
+):
+    """Initialize zarr store for lfp data
+
+    Args:
+        zarr_path (Path): file path of zarr store
+        n_samples (int): number of samples in recording
+        n_channels (int): number of channels in recording
+        fs (float): sampling rate in hz
+        chunk_len (int): length of chunks
+        dtype (str): data type
+        attrs (dict): metadata dict
+    """
+    
+    zarr_path = Path(zarr_path)
+    
+    import dask.array as da
+    
+    data = da.zeros(
+        (n_samples, n_channels),
+        chunks = (chunk_len, n_channels),
+        dtype = dtype
+    )
+
+    ds = xr.Dataset(
+        data_vars = {
+            "processed": (("time", "channel"), data)
+        },
+        coords={
+            "time": np.arange(n_samples) / fs,
+            "channel": np.arange(n_channels)
+        },
+        attrs=attrs
+    )
+
+    ds.to_zarr(zarr_path, mode="w", consolidated=False)
+
+
+
 
 
 def get_lfp_samples(self, start_sample_index, end_sample_index):

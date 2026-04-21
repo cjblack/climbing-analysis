@@ -3,6 +3,7 @@ from scipy.signal import hilbert, butter, filtfilt, sosfiltfilt, iirnotch
 from scipy.ndimage import label
 import numpy as np
 import pandas as pd
+from climbing_analysis.utils import check_and_make_directory
 
 
 def lfp_filter(data, fs, band=(0.1, 100), notch_freq=50.0, notch_Q=30.0):
@@ -51,7 +52,7 @@ def bandpass_filter(signal, fs, freq, bandwidth=20, order=3):
     b, a = butter(order, [low, high], btype='band')
     return filtfilt(b, a, signal)
 
-def detect_camera_on(signal, fs, frame_rate=200, threshold_ratio=0.3, min_bout_duration=0.1):
+def detect_camera_on(signal, fs, directory:str, frame_rate=200, threshold_ratio=0.3, min_bout_duration=0.1, save_events=True):
     """
     Extracts event times from analog channel recording camera strobe based on rising edge
     """
@@ -69,7 +70,7 @@ def detect_camera_on(signal, fs, frame_rate=200, threshold_ratio=0.3, min_bout_d
 
     # Label contiguous active regions
     labeled_array, num_features = label(active)
-
+    
     bouts = []
     frame_captures = []
     frame_rows = []
@@ -94,9 +95,14 @@ def detect_camera_on(signal, fs, frame_rate=200, threshold_ratio=0.3, min_bout_d
 
             })
             frame_rows.append(df)
-
-    frame_map = pd.concat(rows, ignore_index=True)
-    frame_map.to_csv("video_alignment.csv", index=False)
+    
+    if not frame_rows:
+        raise ValueError("frame_rows is empty; no frames were identified")
+    frame_map = pd.concat(frame_rows, ignore_index=True)
+    if save_events:
+        events_directory = directory+'/events'
+        check_and_make_directory(events_directory) # check that directory exists, if not then create it
+        frame_map.to_csv(directory+"/video_alignment.csv", index=False)
 
     return bouts, envelope, frame_captures
 
@@ -107,10 +113,10 @@ def get_camera_events(directory, node_idx=1, rec_idx=0, event_channel= 67, thres
     print('Check analog channel for frames')
     session = Session(directory)
     continuous = session.recordnodes[node_idx].recordings[rec_idx].continuous[0]
-    fs = continuous.metadata['sample_rate']
+    fs = continuous.metadata.sample_rate#continuous.metadata['sample_rate']
     event_data = continuous.samples[:,event_channel]
     ts = continuous.sample_numbers/fs
 
-    bouts, envelope, frame_captures = detect_camera_on(event_data, fs)
+    bouts, envelope, frame_captures = detect_camera_on(event_data, fs, directory=directory)
 
     return event_data, ts, bouts, frame_captures, continuous

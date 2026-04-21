@@ -1,6 +1,7 @@
 from pathlib import Path
 import xmltodict
 import pandas as pd
+import dask.dataframe as dd
 from climbing_analysis.decorators import log_call
 from climbing_analysis.pose.utils import load_df_list, load_pickle
 from climbing_analysis.ephys.utils import *
@@ -19,7 +20,7 @@ class ClimbingSessionData:
     """
     def __init__(self, session_path, params='climbing_sorting_params.yaml'):
         self.session_path = Path(session_path)
-        self.pose_path = self.session_path / 'PoseData'
+        self.pose_path = self.session_path / 'pose'
         self.sorting_params = get_sorting_params(params)
         self.ephys_data = None
         self.pose_data = None
@@ -146,7 +147,7 @@ class ClimbingSessionData:
         """
         self.recording = read_data(data_path=str(self.session_path), rec_type=self.sorting_params['rec_type'])
         self.probe = create_probe(self.sorting_params['probe_manufacturer'],self.sorting_params['probe_id'], self.sorting_params['channel_map'])
-        self.recording = self.recording.set_probe(self.probe,group_mode='by_shank') # have to rename to set probe
+        self.recording = self.recording.set_probe(self.probe) #,group_mode='by_shank' # have to rename to set probe
 
 
     @log_call(label='event data', type='load')
@@ -159,8 +160,11 @@ class ClimbingSessionData:
         prefix = 'Record Node'
         self.has_ephys = any(p.is_dir() and p.name.startswith(prefix) for p in self.session_path.iterdir())
         if self.has_ephys:
-            event_data, ts, bouts, frame_captures, continuous = get_camera_events(self.session_path)
-            self.frame_captures = frame_captures
+            #event_data, ts, bouts, frame_captures, continuous = get_camera_events(self.session_path)
+            #self.frame_captures = frame_captures
+            df_fc = dd.read_csv(self.session_path / 'events' / 'video_alignment.csv')
+            self.frame_captures = [df_fc[df_fc['video_index']==i+1].compute()['sample_index'].values for i in np.arange(0,df_fc['video_index'].unique().compute().__len__(),1)] # this is a very inefficient and dirty load scheme
+            #self.frame_captures = pd.read_csv(self.session_path / 'events' / 'video_alignment.csv')
 
     @log_call(label='analyzer', type='load')
     def get_analyzer(self):

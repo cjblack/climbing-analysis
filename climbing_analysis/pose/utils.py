@@ -2,6 +2,8 @@ from scipy.interpolate import interp1d
 import numpy as np
 import pandas as pd
 import numpy as np
+from dask import delayed
+import dask.dataframe as dd
 import h5py
 import os
 import glob
@@ -124,15 +126,15 @@ def get_df_list(id: str, directory: str, exp_type: str, date_: str = '', preproc
 
     return df_list
 
-def batch_load_files(file_list,preprocess=False):
+def batch_load_files(file_list,sample_rate=200., preprocess=False):
     dfs = []
     for file in file_list:
-        df = load_file(file,preprocess)
-        df.attrs['Path'] = Path.cwd()#os.getcwd()
+        df = load_file(file,sample_rate, preprocess)
+        #df.attrs['Path'] = Path.cwd()#os.getcwd()
         dfs.append(df)
     return dfs
 
-def load_file(filename,sample_rate=200,preprocess=False):
+def load_file(filename,sample_rate=200.,preprocess=False):
     # load h5 file - can offload from function into a separate data handle
     # load h5 file - can offload from function into a separate data handle
     with h5py.File(filename, "r") as f:
@@ -143,14 +145,68 @@ def load_file(filename,sample_rate=200,preprocess=False):
     poseDF = create_df(locations, node_locs)
     if preprocess==True:
         poseDF = KNP.remove_coordinate_jumps(poseDF)
-    dirInfo = os.path.split(filename) # file info
-    exInfo = str.split(dirInfo[1],'_') # experiment info
-    subId = exInfo[0]
-    exType = exInfo[1]
-    exDate = exInfo[2]
-    exTrial = exInfo[3].split('.')[0]
-    poseDF.attrs = {'Path':dirInfo[0],'File':dirInfo[1],'Id':subId,'Type':exType,'Date':exDate,'Trial':exTrial, 'SampleRate':sample_rate}
+    dir_info = os.path.split(filename) # file info
+    exp_info = str.split(dir_info[1],'_') # experiment info
+    sub_id = exp_info[0]
+    exp_type = exp_info[1]
+    exp_date = exp_info[2]
+    exp_trial = exp_info[3].split('.')[0]
+    poseDF.attrs = {'Path':dir_info[0],'File':dir_info[1],'Id':sub_id,'Type':exp_type,'Date':exp_date,'Trial':exp_trial, 'SampleRate':sample_rate}
     return poseDF
+
+def dask_batch_load_files(file_list: list, sample_rate: float =200., preprocess: bool =False):
+    """Create a dask dataframe of all data, useful for distributed processing. File metadata are columnar entries. This is handled differently from batch_load_files, as pandas attributes are not partition specific.
+
+    Args:
+        file_list (list): List of strings of h5 files to load.
+        sample_rate (float, optional): Camera sample rate in frames per second. Defaults to 200.0.
+        preprocess (bool, optional): Run preprocessing steps on pose data if True - this is simple at the moment but will expand. Defaults to False.
+
+    Returns:
+        dask.dataframe: Lazy load of pose estimation data.
+    """
+    
+    ddfs = dd.from_map(dask_load_file, file_list, sample_rate=sample_rate, preprocess=preprocess)
+    
+    return ddfs
+
+def dask_load_file(filename: str,sample_rate: float =200.,preprocess: bool =False):
+    """Load H5 data into a pandas dataframe for converting to dask dataframe. Compared to load_files, this stores file metadata as columnar instead of as dataframe attributes.
+
+    Args:
+        filename (str): H5 file path to be loaded.
+        sample_rate (float, optional): Camera sample rate in frames per second. Defaults to 200.0.
+        preprocess (bool, optional): Run preprocessing steps on pose data if True - this is simple at the moment but will expand. Defaults to False.
+
+    Returns:
+        pandas.DataFrame: Dataframe of pose estimation time series for extracted X and Y coordinates.
+    """
+    # load h5 file - can offload from function into a separate data handle
+    # load h5 file - can offload from function into a separate data handle
+    with h5py.File(filename, "r") as f:
+        locations = f["tracks"][:].T  # x,y coords of labeled joints
+        node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
+        node_locs = dict([(name, i) for i, name in enumerate(node_names)])  # create dictionary of {joint: idx}
+    locations =fill_missing(locations)
+    df = create_df(locations, node_locs)
+    if preprocess==True:
+        df = KNP.remove_coordinate_jumps(df)
+    dir_info = os.path.split(filename) # file info
+    exp_info = str.split(dir_info[1],'_') # experiment info
+    sub_id = exp_info[0]
+    exp_type = exp_info[1]
+    exp_date = exp_info[2]
+    exp_trial = exp_info[3].split('.')[0]
+
+    df['Path'] = dir_info[0]
+    df['File'] = dir_info[1]
+    df['Id'] = sub_id
+    df['Type'] = exp_type
+    df['Date'] = exp_date
+    df['Trial'] = exp_trial
+    df['SampleRate'] = sample_rate
+
+    return df
 
 def fill_missing(Y, kind="linear"):
     """*Taken from sleap's pose estimation tools** Fills missing values independently along each dimension after the first."""

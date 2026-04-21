@@ -30,7 +30,18 @@ data_path = 'path/to/datafolder'
 
 # chunk, filter, and downsample
 process_lfp(data_path)
+```
 
+# Video alignment
+This currently will return, among other things a list of arrays called `frame_captures`. Each list index is the start of a new video, and each value in the array corresponds to the ephys sample that a video frame was captured. This is also saved as a `.csv` file withint the `events` folder in the data directory.
+
+```python
+from climbing_analysis.epphys.events import get_camera_events
+
+data_path = 'path/to/datafolder'
+camera_channel = 67
+
+event_data, ts, bouts, frame_captures, _ = get_camera_events(data_path, event_channel = camera_channel)
 ```
 
 # Process a session

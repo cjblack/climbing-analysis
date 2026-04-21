@@ -5,6 +5,8 @@ channels:
   - nvidia
   - conda-forge
 dependencies:
+  - dask
+  - dask-ml
   - matplotlib
   - mne
   - numpy
@@ -18,9 +20,10 @@ dependencies:
   - statsmodels
   - h5py
   - scipy
+  - scikit-learn
   - yaml
   - xmltodict
+  - zarr
   - pip:
     - open-ephys-python-tools
-    - scikit-learn
     - spikeinterface
