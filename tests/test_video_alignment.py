@@ -18,7 +18,7 @@ def test_video_alignment():
     signal_pad = np.pad(signal, 1000, mode='minimum')
 
     # no saving data, hence 'placeholder' string
-    _, _, frame_captures = detect_camera_on(signal_pad, sample_rate, 'placeholder', frame_rate=fps, min_bout_duration=0.0, save_events=False)
+    _, _, frame_captures, _ = detect_camera_on(signal_pad, sample_rate, 'placeholder', frame_rate=fps, min_bout_duration=0.0, save_events=False)
     
     assert len(frame_captures) == 1 # only one "video" recording should have been identified
     assert len(frame_captures[0]) == 3 # only three frame captures should have been identified
