@@ -11,6 +11,7 @@ dependencies:
   - matplotlib
   - h5py
   - pytables
+  - psutil
   - scikit-learn
   - datajoint
   - dask

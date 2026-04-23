@@ -3,7 +3,9 @@ from scipy.signal import hilbert, butter, filtfilt, sosfiltfilt, iirnotch
 from scipy.ndimage import label
 import numpy as np
 import pandas as pd
+import dask.dataframe as dd
 from climbing_analysis.utils import check_and_make_directory
+from climbing_analysis.pose.utils import load_pickle, load_df_list
 
 
 def lfp_filter(data, fs, band=(0.1, 100), notch_freq=50.0, notch_Q=30.0):
@@ -89,7 +91,7 @@ def detect_camera_on(signal, fs, directory:str, frame_rate=200, threshold_ratio=
             frame_starts = edges+start_idx
             frame_captures.append(frame_starts)
             df = pd.DataFrame({
-                "video_index": i,
+                "video_index": i-1,
                 "frame_id": np.arange(len(frame_starts)),
                 "sample_index": frame_starts
 
@@ -102,9 +104,9 @@ def detect_camera_on(signal, fs, directory:str, frame_rate=200, threshold_ratio=
     if save_events:
         events_directory = directory+'/events'
         check_and_make_directory(events_directory) # check that directory exists, if not then create it
-        frame_map.to_csv(directory+"/video_alignment.csv", index=False)
+        frame_map.to_csv(events_directory+"/video_alignment.csv", index=False)
 
-    return bouts, envelope, frame_captures
+    return bouts, envelope, frame_captures, frame_map
 
 def get_camera_events(directory, node_idx=1, rec_idx=0, event_channel= 67, threshold_ratio=0.3):
     """
@@ -117,6 +119,22 @@ def get_camera_events(directory, node_idx=1, rec_idx=0, event_channel= 67, thres
     event_data = continuous.samples[:,event_channel]
     ts = continuous.sample_numbers/fs
 
-    bouts, envelope, frame_captures = detect_camera_on(event_data, fs, directory=directory)
+    bouts, envelope, frame_captures, frame_map = detect_camera_on(event_data, fs, directory=directory)
 
     return event_data, ts, bouts, frame_captures, continuous
+
+def extract_pose_events(directory: str):
+    stances_path = Path(directory) / 'pose' / 'stances.pkl'
+    df_list_path = Path(directory) / 'pose' / 'pose.h5'
+    frame_map_path = Path(directory) / 'events' / 'video_alignment.csv'
+    
+    
+    if not (stances_path.exists() and df_list_path.exists() and frame_map_path.exists()):
+        raise NameError('stances.pkl, pose.h5, or video_alignment.csv file(s) does not exist.')
+    
+    stances = load_pickle(str(stances_path))
+    df_list = load_df_list(str(df_list_path))
+    frame_map = dd.read_csv(frame_map_path)
+
+
+

@@ -2,7 +2,7 @@ from scipy.interpolate import interp1d
 import numpy as np
 import pandas as pd
 import numpy as np
-from dask import delayed
+import dask
 import dask.dataframe as dd
 import h5py
 import os
@@ -12,7 +12,7 @@ from pathlib import Path
 import pickle
 import h5py
 
-
+dask.config.set({"dataframe.convert-string": False}) # reduces unnecessary conversions during dask compute calls
 
 def load_df_list(df_list_filename):
     dflist = []
@@ -91,7 +91,7 @@ def save_df_list(df_list):
             store.put(name,df)
             store.get_storer(name).attrs.metadata = df.attrs
 
-def create_df(locs, node_locs,fps=200):
+def create_df(locs, node_locs,fps=200.):
     '''
     Creates a data frame with predictions (x,y coordinates) for each joint, and appends timestamps based on frame rate
     :param locs:
@@ -103,7 +103,7 @@ def create_df(locs, node_locs,fps=200):
     for node, val in node_locs.items():
         locDictionary[node+'_X'] = locs[:,val,0,0]
         locDictionary[node+'_Y'] = locs[:,val,1,0]*-1
-    #locDictionary['timestamps'] = np.arange(0,locs.shape[0],1)*(1/fps) #timestamps in seconds
+    locDictionary['frame_id'] = np.arange(0,locs.shape[0],1) #timestamps in seconds
     poseDf = pd.DataFrame(data=locDictionary)
     return poseDf
 
@@ -127,11 +127,11 @@ def get_df_list(id: str, directory: str, exp_type: str, date_: str = '', preproc
     return df_list
 
 def batch_load_files(file_list,sample_rate=200., preprocess=False):
-    dfs = []
-    for file in file_list:
+    dfs = [None] * len(file_list)
+    for i, file in enumerate(file_list):
         df = load_file(file,sample_rate, preprocess)
         #df.attrs['Path'] = Path.cwd()#os.getcwd()
-        dfs.append(df)
+        dfs[i] = df
     return dfs
 
 def load_file(filename,sample_rate=200.,preprocess=False):
@@ -165,7 +165,8 @@ def dask_batch_load_files(file_list: list, sample_rate: float =200., preprocess:
     Returns:
         dask.dataframe: Lazy load of pose estimation data.
     """
-    
+
+
     ddfs = dd.from_map(dask_load_file, file_list, sample_rate=sample_rate, preprocess=preprocess)
     
     return ddfs
@@ -202,11 +203,12 @@ def dask_load_file(filename: str,sample_rate: float =200.,preprocess: bool =Fals
     df['File'] = dir_info[1]
     df['Id'] = sub_id
     df['Type'] = exp_type
-    df['Date'] = exp_date
+    df['Date'] = pd.to_datetime(exp_date)
     df['Trial'] = exp_trial
     df['SampleRate'] = sample_rate
 
     return df
+
 
 def fill_missing(Y, kind="linear"):
     """*Taken from sleap's pose estimation tools** Fills missing values independently along each dimension after the first."""
