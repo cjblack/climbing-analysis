@@ -8,7 +8,7 @@ def test_video_alignment():
     """Test for extracting video alignment with ephys data
     """
     
-    data_path = Path(__file__).resolve().parent / 'test_data' / 'continuous_event_test_data.npz'
+    data_path = Path(__file__).resolve().parent.parent / 'examples' / 'sample_data' / 'continuous_event_test_data.npz'
     data = np.load(data_path)
     signal = data['signal']
     sample_rate = data['sample_rate']

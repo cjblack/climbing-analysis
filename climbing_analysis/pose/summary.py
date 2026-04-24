@@ -22,7 +22,7 @@ def plot_summary(ddf: dask.dataframe):
               .apply(get_max_speed, 
                      meta={"Id": "object", 
                            "Date": "datetime64[ns]", 
-                           "Trial":"object", 
+                           "Trial":"int64", 
                            "max_dy": "float64"})
                            .reset_index(drop=True)
     )

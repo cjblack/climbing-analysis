@@ -30,3 +30,4 @@ dependencies:
       - kilosort[gui]
       - open-ephys-python-tools
       - spikeinterface
+      - -e .

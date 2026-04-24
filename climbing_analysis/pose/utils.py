@@ -168,7 +168,11 @@ def dask_batch_load_files(file_list: list, sample_rate: float =200., preprocess:
 
 
     ddfs = dd.from_map(dask_load_file, file_list, sample_rate=sample_rate, preprocess=preprocess)
+
     
+    ## SAVING AS PARQUET
+    # ddfs = dd.concat(ddfs)
+    # ddfs.to_parquet(data_path / 'pose' / 'processed', engine='pyarrow', compression='zstd')
     return ddfs
 
 def dask_load_file(filename: str,sample_rate: float =200.,preprocess: bool =False):
@@ -197,14 +201,14 @@ def dask_load_file(filename: str,sample_rate: float =200.,preprocess: bool =Fals
     sub_id = exp_info[0]
     exp_type = exp_info[1]
     exp_date = exp_info[2]
-    exp_trial = exp_info[3].split('.')[0]
+    exp_trial = exp_info[3].split('.')[0].split('T')[1]
 
     df['Path'] = dir_info[0]
     df['File'] = dir_info[1]
     df['Id'] = sub_id
     df['Type'] = exp_type
     df['Date'] = pd.to_datetime(exp_date)
-    df['Trial'] = exp_trial
+    df['Trial'] = int(exp_trial)
     df['SampleRate'] = sample_rate
 
     return df

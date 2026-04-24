@@ -1,3 +1,17 @@
+Metadata-Version: 2.4
+Name: climbing-analysis
+Version: 0.1.0
+Summary: Pipeline for analysing extracellular electrophysiology with freely-moving behaviour
+Author: Christopher Black
+Requires-Python: >3.11
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: pandas
+Requires-Dist: matplotlib
+Requires-Dist: h5py
+Requires-Dist: pyyaml
+
 [![Unit Test](https://github.com/cjblack/climbing-analysis/actions/workflows/session_class_test.yml/badge.svg)](https://github.com/cjblack/climbing-analysis/actions/workflows/session_class_test.yml)
 
  # Quick install
