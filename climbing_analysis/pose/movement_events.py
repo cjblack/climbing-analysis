@@ -2,6 +2,7 @@ from pathlib import Path
 
 from scipy.signal import find_peaks
 import pandas as pd
+import dask
 import numpy as np
 
 from climbing_analysis.pose.utils import load_df_list
@@ -23,13 +24,26 @@ def save_stances(directory):
     pd.DataFrame.to_csv(stance_dfs, pose_directory / 'stances.csv')
 
 
-def extract_movements(df,height=10, distance=100, thresh=0.1):
+def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., distance: int = 100, thresh: float = 0.1):
+    """Extracts start and stop time indices of node movements, as well as maximum velocity during movement bouts.
+
+    Args:
+        df (pd.DataFrame): Pandas Dataframe containing markerless pose estimation from one trial.
+        node_list (list): List of nodes to extract movement information from.
+        height (float, optional): Height cutoff in pixels for identifying movements. Defaults to 10..
+        distance (int, optional): Distance between movement bouts in samples, this will be based on camera frame rate and expected time between movements. Defaults to 100.
+        thresh (float, optional): Threshold in pixels of what is considered a movement. Defaults to 0.1.
+
+    Returns:
+        pd.DataFrame: Pandas DataFrame containing start, stop, and maximum velocity indices for each node.
+    """
     
-    NODES = ['r_forepaw','l_forepaw','r_hindpaw','l_hindpaw']
+    #NODES = ['r_forepaw','l_forepaw','r_hindpaw','l_hindpaw']
 
     stances = dict()
-    trial = int(df.attrs['Trial'].split('T')[-1])
-    for i, node in enumerate(NODES):
+    trial_ = df['Trial'].min()#int(df.attrs['Trial'].split('T')[-1])
+    date_ = df['Date'].min()
+    for i, node in enumerate(node_list):
         y=df[node+'_Y'].to_numpy()
         y_diff = np.abs(np.diff(y))#np.gradient(y))
         pos_peaks, _ = find_peaks(y_diff, height=height, distance=distance)
@@ -44,11 +58,22 @@ def extract_movements(df,height=10, distance=100, thresh=0.1):
             max_.append(start_end[idxs][0]+np.argmax(y_diff[start_end[idxs][0]:start_end[idxs][1]]))
 
         stances[node]={'start':start_,'end':end_, 'max':max_}
-    stances['trial'] = trial
+    stances['trial'] = trial_
+    stances['date'] = date_
 
     return pd.DataFrame.from_dict(stances)
 
-def get_start_and_end(data, peaks, threshold):
+def get_start_and_end(data: np.array, peaks, threshold: float):
+    """Identifies start and stop of movements from a pose estimation time series.
+
+    Args:
+        data (np.array): Array containing velocity/diff (n-1 samples) of time series.
+        peaks (_type_): Array containing indices of peak velocities/diff of time series.
+        threshold (float): Threshold in pixels for what is considered a movement.
+
+    Returns:
+        list: List containing tuple of start and end times for movements.
+    """
     start_end = []
     for p in peaks:
         idxs = []

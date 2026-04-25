@@ -15,7 +15,7 @@ conda create -f environment_redux.yml
  * LFP processing
  * Synchronising neural and behavioural recordings
 
- This code base is designed with the custom climbing behaviour in mind (DOI).
+ This code base is designed with the custom climbing behaviour in mind ([Naturalistic climbing reveals adaptive strategies for interlimb coordination in freely moving mice](https://doi.org/10.1016/j.isci.2026.115901)).
 
 # Sorting spikes
 Currently tested with data acquired from Cambridge Neurotech H5 probe using the Open Ephys acquisition system, and spikesorting with kilosort4.
