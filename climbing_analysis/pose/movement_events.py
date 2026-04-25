@@ -21,7 +21,7 @@ def save_stances(directory):
         stance_list[i] = extract_stances(df)
     
     stance_dfs = pd.concat(stance_list)
-    pd.DataFrame.to_csv(stance_dfs, pose_directory / 'stances.csv')
+    pd.DataFrame.to_pickle(stance_dfs, pose_directory / 'stances.pkl') # csv is a nightmare for the rows
 
 
 def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., distance: int = 100, thresh: float = 0.1):
