@@ -5,7 +5,7 @@ from datetime import datetime
 import argparse
 
 from dj_config import connect
-from climbing_analysis.schema import (
+from neurokinematics.schema import (
     Subject,
     Session,
     EphysRecordNode,

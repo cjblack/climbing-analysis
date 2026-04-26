@@ -1,6 +1,6 @@
 from pathlib import Path
 import numpy as np
-from climbing_analysis.multi_modal.alignment import detect_camera_on
+from neurokinematics.multi_modal.alignment import detect_camera_on
 
 def test_video_alignment():
     """Test for extracting video alignment with ephys data

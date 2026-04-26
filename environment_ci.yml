@@ -1,4 +1,4 @@
-name: climbing_ci
+name: neurokinematics_ci
 channels:
   - conda-forge
 dependencies:

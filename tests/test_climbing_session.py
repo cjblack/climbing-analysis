@@ -1,6 +1,6 @@
 from pathlib import Path
 import pandas as pd
-from climbing_analysis.data.session import ClimbingSession
+from neurokinematics.data.session import ClimbingSession
 
 def test_climbing_session():
     data_path = Path(__file__).resolve().parent.parent / 'climbing_analysis/data/test_sets/example_session_01'
