@@ -1,4 +1,4 @@
-[![Unit Test](https://github.com/cjblack/neuroinformatics/actions/workflows/session_class_test.yml/badge.svg)](https://github.com/cjblack/neuroinformatics/actions/workflows/session_class_test.yml)
+[![Unit Test](https://github.com/cjblack/neurokinematics/actions/workflows/session_class_test.yml/badge.svg)](https://github.com/cjblack/neurokinematics/actions/workflows/session_class_test.yml)
 
  # Quick install
  Download repository, and create environment:
