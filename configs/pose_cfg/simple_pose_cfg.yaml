@@ -1,0 +1,3 @@
+# Simple preprocessing config file, only fills missing vals
+pose_preprocessing:
+  fill_missing: true

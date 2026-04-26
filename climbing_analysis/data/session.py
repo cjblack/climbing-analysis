@@ -6,7 +6,7 @@ from climbing_analysis.decorators import log_call
 from climbing_analysis.pose.io import load_df_list, load_pickle
 from climbing_analysis.ephys.io import *
 from climbing_analysis.ephys.spike_sorting import *
-from climbing_analysis.ephys.preprocessing.lfp import process_lfp
+from climbing_analysis.ephys.lfp.preprocessing import preprocess_lfp
 
 
 class ClimbingSession:
@@ -116,9 +116,9 @@ class ClimbingSession:
         return self.lfp.get_samples(start_sample_index=start_sample_index, end_sample_index=end_sample_index)
     
     @log_call(label='preprocess lfp', type='process')
-    def preprocess_lfp(self):
+    def _preprocess_lfp(self):
         "Chunks, filters, and downsamples the data, storing as a memmap."
-        process_lfp(self.session_path)
+        preprocess_lfp(self.session_path)
         
     @log_call(label='channel map', type='load')
     def get_acquisition_channel_map(self, chan_count=64):

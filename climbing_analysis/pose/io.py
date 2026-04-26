@@ -7,7 +7,7 @@ import h5py
 import os
 import glob
 import h5py
-from climbing_analysis.pose.preprocessing.cleaning import fill_missing
+from climbing_analysis.pose.preprocessing.cleaning import fill_missing, remove_high_velocity, remove_low_confidence
 from pathlib import Path
 import pickle
 import h5py
@@ -135,8 +135,7 @@ def batch_load_files(file_list,sample_rate=200., preprocess=False):
     return dfs
 
 def load_file(filename,sample_rate=200.,preprocess=False):
-    # load h5 file - can offload from function into a separate data handle
-    # load h5 file - can offload from function into a separate data handle
+
     with h5py.File(filename, "r") as f:
         locations = f["tracks"][:].T  # x,y coords of labeled joints
         node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
@@ -154,7 +153,7 @@ def load_file(filename,sample_rate=200.,preprocess=False):
     poseDF.attrs = {'Path':dir_info[0],'File':dir_info[1],'Id':sub_id,'Type':exp_type,'Date':exp_date,'Trial':exp_trial, 'SampleRate':sample_rate}
     return poseDF
 
-def dask_batch_load_files(file_list: list, sample_rate: float =200., preprocess: bool =False):
+def dask_batch_load_files(file_list: list, sample_rate: float = 200., preprocess: dict | None = None):
     """Create a dask dataframe of all data, useful for distributed processing. File metadata are columnar entries. This is handled differently from batch_load_files, as pandas attributes are not partition specific.
 
     Args:
@@ -175,7 +174,7 @@ def dask_batch_load_files(file_list: list, sample_rate: float =200., preprocess:
     # ddfs.to_parquet(data_path / 'pose' / 'processed', engine='pyarrow', compression='zstd')
     return ddfs
 
-def dask_load_file(filename: str,sample_rate: float =200.,preprocess: bool =False):
+def dask_load_file(filename: str,sample_rate: float = 200., preprocess: dict | None = None):
     """Load H5 data into a pandas dataframe for converting to dask dataframe. Compared to load_files, this stores file metadata as columnar instead of as dataframe attributes.
 
     Args:
@@ -186,16 +185,25 @@ def dask_load_file(filename: str,sample_rate: float =200.,preprocess: bool =Fals
     Returns:
         pandas.DataFrame: Dataframe of pose estimation time series for extracted X and Y coordinates.
     """
-    # load h5 file - can offload from function into a separate data handle
-    # load h5 file - can offload from function into a separate data handle
+
     with h5py.File(filename, "r") as f:
         locations = f["tracks"][:].T  # x,y coords of labeled joints
         node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
         node_locs = dict([(name, i) for i, name in enumerate(node_names)])  # create dictionary of {joint: idx}
-    locations =fill_missing(locations)
+    #locations =fill_missing(locations)
+    
+    if preprocess is None:
+        preprocess = {}
+        locations = fill_missing(locations)
+    if preprocess.get("fill_missing", True):
+        locations = fill_missing(locations)
+    if preprocess.get("confidence", {}).get("enabled", False):
+        locations = remove_low_confidence(locations, scores, thresh = preprocess['confidence'].get('thresh', 0.7))
+    if preprocess.get("velocity", {}).get("enabled", False):
+        locations = remove_high_velocity(locations, thresh=preprocess['velocity'].get('thresh', 20.))
+    
     df = create_df(locations, node_locs)
-    if preprocess==True:
-        df = KNP.remove_coordinate_jumps(df)
+
     dir_info = os.path.split(filename) # file info
     exp_info = str.split(dir_info[1],'_') # experiment info
     sub_id = exp_info[0]
@@ -214,22 +222,22 @@ def dask_load_file(filename: str,sample_rate: float =200.,preprocess: bool =Fals
     return df
 
 
-def pixels_to_cm(wall='2mm_basic'):
-    # wall distance 6mm average = 25.3px
-    # wall distance 6mm std = 1.6px
-    if wall == '2mm_basic':
-        px_to_cm = (6.0/25.3)*0.1 #ratio to multiply pixels by
-    return px_to_cm
+# def pixels_to_cm(wall='2mm_basic'):
+#     # wall distance 6mm average = 25.3px
+#     # wall distance 6mm std = 1.6px
+#     if wall == '2mm_basic':
+#         px_to_cm = (6.0/25.3)*0.1 #ratio to multiply pixels by
+#     return px_to_cm
 
 def load_pickle(fname):
     with open(fname, "rb") as f:  # "rb" = read binary
         data = pickle.load(f)
     return data
 
-def get_trial_order(dflist):
-    trial_ids = []
-    for df in dflist:
-        tid = int(df.attrs['Trial'].split('T')[-1])
-        trial_ids.append(tid)
-    trial_ids_sort = np.argsort(trial_ids)
-    return trial_ids_sort
+# def get_trial_order(dflist):
+#     trial_ids = []
+#     for df in dflist:
+#         tid = int(df.attrs['Trial'].split('T')[-1])
+#         trial_ids.append(tid)
+#     trial_ids_sort = np.argsort(trial_ids)
+#     return trial_ids_sort
