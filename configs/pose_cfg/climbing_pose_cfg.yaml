@@ -1,0 +1,10 @@
+pose_preprocessing:
+  fill_missing: true
+
+  confidence:
+    enabled: true
+    thresh: 0.7
+
+  velocity:
+    enabled: true
+    thresh: 20

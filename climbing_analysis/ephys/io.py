@@ -11,7 +11,7 @@ from open_ephys.analysis import Session
 from climbing_analysis.io import load_config
 
 CHANNEL_MAP_PATH = Path(__file__).resolve().parent / 'channel_maps'
-SORTING_PARAMS_PATH = Path(__file__).resolve().parent / 'sorting_params'
+SORTING_CFG_PATH = Path(__file__).resolve().parent.parent.parent / 'configs' / 'spike_cfg'
 PROBE_INTERFACE_PATH = Path(__file__).resolve().parent / 'probe_interfaces'
 
 def read_data(data_path: str, rec_type: str = 'openephys', stream_name: str = 'Record Node 109#Acquisition_Board-100.acquisition_board-B'):
@@ -52,14 +52,13 @@ def write_binary(recording,file_loc: str):
     """
     write_binary_recording(recording, file_loc)
 
-def get_sorting_params(params: str):
+def get_sorting_params(cfg: str):
     """
     Get parameters for spike sorting
     """
-    sorting_params = load_config(str(SORTING_PARAMS_PATH / params))
-    # with open(str(SORTING_PARAMS_PATH / params), 'r') as f:
-    #     sorting_params = yaml.load(f, Loader=yaml.SafeLoader)
-    return sorting_params
+    sorting_cfg = load_config(str(SORTING_CFG_PATH / cfg))
+
+    return sorting_cfg
 
 def initialize_zarr_store(
         zarr_path: Path,

@@ -1,3 +1,9 @@
+""" 
+Batch preprocessing markerless pose estimation data.
+
+
+"""
+
 from pathlib import Path
 import glob
 

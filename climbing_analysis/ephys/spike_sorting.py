@@ -6,30 +6,30 @@ from spikeinterface.exporters import export_to_phy
 from spikeinterface.extractors import read_phy
 from spikeinterface.core import load_sorting_analyzer
 import spikeinterface.widgets as sw
-from climbing_analysis.ephys.utils import * # REMOVE
+#from climbing_analysis.ephys.utils import * # REMOVE
 from climbing_analysis.ephys.io import *
 from climbing_analysis.ephys.utils import create_probe
 from climbing_analysis.pose.utils import pixels_to_cm # REMOVE
 from scipy.ndimage import gaussian_filter1d
 
-PARAM_PATH = Path(__file__).resolve().parent / 'sorting_params'
+#PARAM_PATH = Path(__file__).resolve().parent.parent.parent / 'sorting_params'
 
 
-def sort_spikes(data_path: str, param_file:str): #rec_type:str = 'openephys', sorter='kilosort4', probe_manufacturer: str = 'cambridgeneurotech', probe_id: str = 'ASSY-236-H5', channel_map = 'h5_channel_map.npy'):
+def sort_spikes(data_path: str, cfg_file:str): #rec_type:str = 'openephys', sorter='kilosort4', probe_manufacturer: str = 'cambridgeneurotech', probe_id: str = 'ASSY-236-H5', channel_map = 'h5_channel_map.npy'):
     """
     Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe
     """
     # Load sorting params
-    param_file = PARAM_PATH / param_file
-    sorting_params = get_sorting_params(param_file)
+    #param_file = PARAM_PATH / param_file
+    sorting_cfg = get_sorting_params(cfg_file)
 
-    rec_type = sorting_params['rec_type']
-    sorter = sorting_params['sorter']
-    probe_id = sorting_params['probe_id']
-    probe_manufacturer = sorting_params['probe_manufacturer']
-    group_mode = sorting_params['group_mode']
-    channel_map = sorting_params['channel_map']
-    stream_name = sorting_params['stream_name']
+    rec_type = sorting_cfg['rec_type']
+    sorter = sorting_cfg['sorter']
+    probe_id = sorting_cfg['probe_id']
+    probe_manufacturer = sorting_cfg['probe_manufacturer']
+    group_mode = sorting_cfg['group_mode']
+    channel_map = sorting_cfg['channel_map']
+    stream_name = sorting_cfg['stream_name']
     
     
     data_path = Path(data_path) # windows path
