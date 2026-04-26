@@ -3,7 +3,7 @@ import pandas as pd
 from neurokinematics.data.session import ClimbingSession
 
 def test_climbing_session():
-    data_path = Path(__file__).resolve().parent.parent / 'neurokinematics/data/test_sets/example_session_01'
+    data_path = Path(__file__).resolve().parent.parent.parent / 'neurokinematics/data/test_sets/example_session_01'
     climbing_session = ClimbingSession(data_path)
 
     assert isinstance(climbing_session.stances, list)

@@ -1,4 +1,4 @@
-name: Climbing Session
+name: unit tests
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
         with:
           miniforge-version: latest
           environment-file: environment_ci.yml
-          activate-environment: climbing_ci
+          activate-environment: neurokinematics_ci
           conda-remove-defaults: "true"
           channel-priority: strict
           python-version: 3.11 #3.9
@@ -28,10 +28,10 @@ jobs:
           python -m pip install --upgrade pip 
           python -m pip install "setuptools<82"
           python -c "import pkg_resources; print('pkg_resources OK')"
-      - name: Climbing Session Data loader test
+      - name: Run pytest
         shell: bash -l {0}
         run: |
-          pytest --maxfail=1 --disable-warnings -q
+          pytest tests/unit --maxfail=1 --disable-warnings -q
   
   merge:
     needs: test

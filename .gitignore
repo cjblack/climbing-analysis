@@ -11,6 +11,7 @@ neurokinematics/models/glm.py
 mysql_data/
 .secrets/
 __pycache__/
+tests/__pycache__
 *.pyc
 neurokinematics.egg-info/
 .pytest_cache/
