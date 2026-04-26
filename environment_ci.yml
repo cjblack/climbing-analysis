@@ -24,4 +24,4 @@ dependencies:
   - pip:
       - open-ephys-python-tools
       - spikeinterface
-      - e .
+      - -e .
