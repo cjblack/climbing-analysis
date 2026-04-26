@@ -4,7 +4,7 @@ import pandas as pd
 import dask.dataframe as dd
 from climbing_analysis.decorators import log_call
 from climbing_analysis.pose.io import load_df_list, load_pickle
-from climbing_analysis.ephys.utils import *
+from climbing_analysis.ephys.io import *
 from climbing_analysis.ephys.spike_sorting import *
 from climbing_analysis.ephys.preprocessing.lfp import process_lfp
 
@@ -18,10 +18,10 @@ class ClimbingSession:
     from climbing_analysis.data.session_data import ClimbingSessionData
     csession = ClimbingSessionData('path/to/data/directory')
     """
-    def __init__(self, session_path, params='climbing_sorting_params.yaml'):
+    def __init__(self, session_path, cfg='climbing_sorting_cfg.yaml'):
         self.session_path = Path(session_path)
         self.pose_path = self.session_path / 'pose'
-        self.sorting_params = get_sorting_params(params)
+        self.sorting_cfg = get_sorting_cfg(cfg) # refactor this to config...
         self.ephys_data = None
         self.pose_data = None
         self.analyzer = None
@@ -145,8 +145,8 @@ class ClimbingSession:
         stores:
             self.recording: spikeinterface recording object containing raw data traces, with relevant probe information
         """
-        self.recording = read_data(data_path=str(self.session_path), rec_type=self.sorting_params['rec_type'])
-        self.probe = create_probe(self.sorting_params['probe_manufacturer'],self.sorting_params['probe_id'], self.sorting_params['channel_map'])
+        self.recording = read_data(data_path=str(self.session_path), rec_type=self.sorting_cfg['rec_type'])
+        self.probe = create_probe(self.sorting_cfg['probe_manufacturer'],self.sorting_cfg['probe_id'], self.sorting_cfg['channel_map'])
         self.recording = self.recording.set_probe(self.probe) #,group_mode='by_shank' # have to rename to set probe
 
 

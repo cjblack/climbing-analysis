@@ -52,7 +52,7 @@ def write_binary(recording,file_loc: str):
     """
     write_binary_recording(recording, file_loc)
 
-def get_sorting_params(cfg: str):
+def get_sorting_cfg(cfg: str):
     """
     Get parameters for spike sorting
     """

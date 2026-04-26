@@ -11,77 +11,8 @@ from climbing_analysis.ephys.utils import create_probe
 from climbing_analysis.pose.utils import pixels_to_cm # REMOVE
 from scipy.ndimage import gaussian_filter1d
 
-#PARAM_PATH = Path(__file__).resolve().parent.parent.parent / 'sorting_params'
 
-
-def sort_spikes(data_path: str, cfg_file:str): #rec_type:str = 'openephys', sorter='kilosort4', probe_manufacturer: str = 'cambridgeneurotech', probe_id: str = 'ASSY-236-H5', channel_map = 'h5_channel_map.npy'):
-    """
-    Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe
-    """
-    # Load sorting params
-    #param_file = PARAM_PATH / param_file
-    sorting_cfg = get_sorting_cfg(cfg_file)
-
-    rec_type = sorting_cfg['rec_type']
-    sorter = sorting_cfg['sorter']
-    probe_id = sorting_cfg['probe_id']
-    probe_manufacturer = sorting_cfg['probe_manufacturer']
-    group_mode = sorting_cfg['group_mode']
-    channel_map = sorting_cfg['channel_map']
-    stream_name = sorting_cfg['stream_name']
-    
-    
-    data_path = Path(data_path) # windows path
-    output_folder = data_path / sorter # set output folder for kilosort
-    recording_path = data_path / f'{sorter}/recording.dat'
-    phy_folder = data_path / f'{sorter}/phy_output'
-
-    recording = read_data(data_path=Path(data_path), rec_type=rec_type, stream_name=stream_name)
-    probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
-    recording = recording.set_probe(probe, group_mode=group_mode) # sets probe
-
-    # stream_folder_path = Path(recording._stream_folders[0].as_posix().split('/continuous')[0])
-    # output_folder = stream_folder_path / sorter # set output folder for kilosort
-    # recording_path = stream_folder_path / f'{sorter}/recording.dat'
-    # phy_folder = stream_folder_path / f'{sorter}/phy_output'
-    # analyzer_folder = stream_folder_path / f'{sorter}/sorting_analyzer'
-
-    # Run spikesorting
-    sorting = run_sorter(sorter_name=sorter, recording=recording, folder=output_folder)
-
-    # save recording as binary format to kilosort4 folder
-    recording.save_to_folder(data_path=recording_path) # might not need to run this step...**
-    analyzer = sorting_analyzer(sorting, recording, data_path) # create sorting analyzer
-    export_to_phy(analyzer, output_folder=phy_folder) # export to phy for visualization
-    return sorting, recording, probe, analyzer
-
-def sorting_analyzer(sorting, recording, data_path):
-    """
-    Create sorting analyzer
-    """
-    folder = data_path / 'sorting_analyzer'
-    analyzer = create_sorting_analyzer(sorting=sorting, recording=recording, format='binary_folder',return_in_uV=True,folder=folder)
-    analyzer.compute(['random_spikes', 'waveforms', 'templates', 'noise_levels', 'spike_locations'])
-    _ = analyzer.compute('spike_amplitudes')
-    _ = analyzer.compute('principal_components', n_components=5, mode="by_channel_local")
-    return analyzer
-
-def load_phy_sorting(directory):
-    """
-    Load sorting data from phy2
-    """
-    sorting = read_phy(directory)
-    return sorting
-
-def load_analyzer(directory):
-    """
-    Load sorting analyzer
-    """
-    analyzer = load_sorting_analyzer(directory)
-    return analyzer
-
-def get_waveforms():
-    print('getting waveforms...')
+# Simple plots for spike data
 
 def plot_waveform(wfs, channel):
     """
@@ -98,7 +29,6 @@ def plot_autocorrelogram(sorter,unit_ids):
     w = sw.plot_autocorrelograms(sorter, unit_ids=unit_ids)
     plt.show()
     return w
-
 
 def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], ylim_=[0,100],bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
     """

@@ -20,16 +20,18 @@ conda create -f environment_redux.yml
 # Sorting spikes
 Currently tested with data acquired from Cambridge Neurotech H5 probe using the Open Ephys acquisition system, and spikesorting with kilosort4.
 
+This requires a config file to be stored in the `configs/spikes_cfg` in the main project directory. This will need to be updated and tested depending on your probe/acquisition system.
+
 ```python
 
-from climbing_analysis.ephys.spike_sorting import sort_spikes
+from climbing_analysis.ephys.spikes.sorting import sort
 
 # Set data directory and param file
-data_path = 'path/to/datafolder'
-param_file = 'path/to/paramfile.yaml'
+data_path = 'path/to/.oebin'
+cfg_file = 'cfgfile.yaml' # located in 'configs/spike_cfg'
 
 # Sort spikes
-sorting, recording, probe, analyzer = sort_spikes(data_path=data_path, param_file=param_file)
+sorting, recording, probe, analyzer = sort(data_path=data_path, cfg_file=param_file)
 
 ```
 

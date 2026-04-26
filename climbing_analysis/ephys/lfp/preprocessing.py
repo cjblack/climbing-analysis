@@ -10,13 +10,13 @@ from climbing_analysis.io import saveas_json, saveas_dataframe_to_csv
 from climbing_analysis.data.processed import LFPProcessed
 
 from climbing_analysis.ephys.io import initialize_zarr_store, get_continuous
-from climbing_analysis.ephys.preprocessing.chunking import iter_chunks
-from climbing_analysis.ephys.preprocessing.filters import filter_lfp
+from climbing_analysis.ephys.lfp.chunking import iter_chunks
+from climbing_analysis.ephys.lfp.filters import filter_lfp
 
 from scipy.signal import resample_poly
 
 
-def process_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_duration_s=1.0, n_aux_chans = 11, filter_info={"n_": 50.0, "bp_":(0.1,100.0), "quality": 30.0}, dtype="float32", storage_format="zarr"):
+def preprocess_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_duration_s=1.0, n_aux_chans = 11, filter_info={"n_": 50.0, "bp_":(0.1,100.0), "quality": 30.0}, dtype="float32", storage_format="zarr"):
     """Performs basic pre-processing of LFP data from .continuous recordings. Chunks, filters, and downsamples data to be stored as a memmap for later access.
 
     Args:
