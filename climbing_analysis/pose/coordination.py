@@ -1,13 +1,23 @@
 import dask
 import numpy as np
 import pandas as pd
-from climbing_analysis.pose.utils import pixels_to_cm
+from climbing_analysis.pose.calibration import pixels_to_cm
 
 def compute_phase_offset_pairs(pose_df: pd.DataFrame, stance_df: pd.DataFrame, node_pairs: list):
-    #GAP_END_PX = -598
-    
-    #pose_df = dd.read_csv(pose_file)
-    #stance_df = dd.read_csv(stance_file)
+    """Compute phase offset between node pairs using swing/reach initiation.
+
+    Args:
+        pose_df (pd.DataFrame): Dataframe containing pose data from trial/session
+        stance_df (pd.DataFrame): Dataframe containing stance data from corresponding trial/session markerless pose data
+        node_pairs (list): List of tuples containing node pairs to compute phase offset between.
+
+    Returns:
+        phase_offset (dict): Dictionary containing the phase offset information for each coordinated movement between node pairs.
+
+    Usage:
+        poff = compute_phase_offset_pairs(pose_df, stance_df, [('left_arm', 'right_arm'), ('left_leg', 'right_leg')]) # make sure to use appropriate node names from pose estimation files.
+    """
+
     # organise pose
     px_cm = pixels_to_cm()
     pose_group = pose_df.sort_values(['Date', 'Trial', 'frame_id']).groupby(['Date', 'Trial'])
@@ -23,15 +33,13 @@ def compute_phase_offset_pairs(pose_df: pd.DataFrame, stance_df: pd.DataFrame, n
         phase_offset[npair]['movement_ratio'] = []
         phase_offset[npair]['max_speed'] = []
         for df_id, ((date_, trial_), df) in enumerate(pose_group):
-            #counts_ = np.sum(df['tail_Y'].to_numpy() > GAP_END_PX)
-            #if counts_ > 200:
             phase_offsets = [] # create an empty list to fill with all phase offset values
             movement_ratio = []
             max_speed = []
             locs = []
-            # plot_phase_offsetV2
+
             stances = stance_df.query(f'date=="{date_}" & trial=={trial_}')
-            #stances = climb_cycle_peaks(df) # get ids for starting and stopping movement
+
             no_stances = min([len(stances[npair[0]]['start']), len(stances[npair[1]]['start'])]) # get number of stances from each node in pair
 
             # Calculate phase offsets between pairs

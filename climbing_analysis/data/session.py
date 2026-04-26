@@ -3,13 +3,13 @@ import xmltodict
 import pandas as pd
 import dask.dataframe as dd
 from climbing_analysis.decorators import log_call
-from climbing_analysis.pose.utils import load_df_list, load_pickle
+from climbing_analysis.pose.io import load_df_list, load_pickle
 from climbing_analysis.ephys.utils import *
 from climbing_analysis.ephys.spike_sorting import *
 from climbing_analysis.ephys.lfp import morlet_lfp, process_lfp
-from climbing_analysis.ephys.events import get_camera_events
 
-class ClimbingSessionData:
+
+class ClimbingSession:
     """
     Class for loading in all relevant pose and ephys data during climbing session.
     Requires processing of video data for pose estimation to be stored within data directory in 'PoseData' folder.
@@ -160,8 +160,6 @@ class ClimbingSessionData:
         prefix = 'Record Node'
         self.has_ephys = any(p.is_dir() and p.name.startswith(prefix) for p in self.session_path.iterdir())
         if self.has_ephys:
-            #event_data, ts, bouts, frame_captures, continuous = get_camera_events(self.session_path)
-            #self.frame_captures = frame_captures
             df_fc = dd.read_csv(self.session_path / 'events' / 'video_alignment.csv')
             self.frame_captures = [df_fc[df_fc['video_index']==i+1].compute()['sample_index'].values for i in np.arange(0,df_fc['video_index'].unique().compute().__len__(),1)] # this is a very inefficient and dirty load scheme
             #self.frame_captures = pd.read_csv(self.session_path / 'events' / 'video_alignment.csv')
@@ -172,7 +170,7 @@ class ClimbingSessionData:
         Gets the analyzer data:
             self.analyzer: stores the spikeinterface analyzer object, use this for plotting spike waveforms
         """
-        analyzer_path = self.sorting_path.resolve().parent.parent / 'analyzer_folder'
+        analyzer_path = self.sorting_path.resolve().parent.parent / 'sorting_analyzer'
         if analyzer_path.is_dir():
             self.analyzer = load_analyzer(analyzer_path)
     

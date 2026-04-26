@@ -6,8 +6,10 @@ from spikeinterface.exporters import export_to_phy
 from spikeinterface.extractors import read_phy
 from spikeinterface.core import load_sorting_analyzer
 import spikeinterface.widgets as sw
-from climbing_analysis.ephys.utils import *
-from climbing_analysis.pose.utils import pixels_to_cm
+from climbing_analysis.ephys.utils import * # REMOVE
+from climbing_analysis.ephys.io import *
+from climbing_analysis.ephys.utils import create_probe
+from climbing_analysis.pose.utils import pixels_to_cm # REMOVE
 from scipy.ndimage import gaussian_filter1d
 
 PARAM_PATH = Path(__file__).resolve().parent / 'sorting_params'
@@ -25,16 +27,25 @@ def sort_spikes(data_path: str, param_file:str): #rec_type:str = 'openephys', so
     sorter = sorting_params['sorter']
     probe_id = sorting_params['probe_id']
     probe_manufacturer = sorting_params['probe_manufacturer']
+    group_mode = sorting_params['group_mode']
     channel_map = sorting_params['channel_map']
+    stream_name = sorting_params['stream_name']
+    
     
     data_path = Path(data_path) # windows path
     output_folder = data_path / sorter # set output folder for kilosort
     recording_path = data_path / f'{sorter}/recording.dat'
     phy_folder = data_path / f'{sorter}/phy_output'
 
-    recording = read_data(data_path=Path(data_path), rec_type=rec_type)
+    recording = read_data(data_path=Path(data_path), rec_type=rec_type, stream_name=stream_name)
     probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
-    recording = recording.set_probe(probe, group_mode='by_shank') # sets probe
+    recording = recording.set_probe(probe, group_mode=group_mode) # sets probe
+
+    # stream_folder_path = Path(recording._stream_folders[0].as_posix().split('/continuous')[0])
+    # output_folder = stream_folder_path / sorter # set output folder for kilosort
+    # recording_path = stream_folder_path / f'{sorter}/recording.dat'
+    # phy_folder = stream_folder_path / f'{sorter}/phy_output'
+    # analyzer_folder = stream_folder_path / f'{sorter}/sorting_analyzer'
 
     # Run spikesorting
     sorting = run_sorter(sorter_name=sorter, recording=recording, folder=output_folder)
@@ -49,7 +60,7 @@ def sorting_analyzer(sorting, recording, data_path):
     """
     Create sorting analyzer
     """
-    folder = data_path / 'analyzer_folder'
+    folder = data_path / 'sorting_analyzer'
     analyzer = create_sorting_analyzer(sorting=sorting, recording=recording, format='binary_folder',return_in_uV=True,folder=folder)
     analyzer.compute(['random_spikes', 'waveforms', 'templates', 'noise_levels', 'spike_locations'])
     _ = analyzer.compute('spike_amplitudes')

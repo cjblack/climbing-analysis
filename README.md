@@ -81,9 +81,9 @@ This is for loading ephys and pose data together in one session object. You'll n
 
 At the moment this is specific to the wall climbing video acquisition and analysis pipeline.
 ```python
-from climbing_analysis.data.session_data import ClimbingSessionData
+from climbing_analysis.data.session import ClimbingSession
 
 data_path = 'path/to/ephys/data/folder'
 
-csession = ClimbingSessionData(data_path)
+csession = ClimbingSession(data_path)
 ```

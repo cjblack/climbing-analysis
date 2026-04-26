@@ -14,12 +14,12 @@ CHANNEL_MAP_PATH = Path(__file__).resolve().parent / 'channel_maps'
 SORTING_PARAMS_PATH = Path(__file__).resolve().parent / 'sorting_params'
 PROBE_INTERFACE_PATH = Path(__file__).resolve().parent / 'probe_interfaces'
 
-def read_data(data_path: str, rec_type: str = 'openephys'):
+def read_data(data_path: str, rec_type: str = 'openephys', stream_name: str = 'Record Node 109#Acquisition_Board-100.acquisition_board-B'):
     """
     Read data in from recording folder
     """
     if rec_type == 'openephys':
-        recording = se.read_openephys(folder_path=data_path, stream_name='Record Node 109#Acquisition_Board-100.acquisition_board-B') # this is hardcoded to the initial rec node
+        recording = se.read_openephys(folder_path=data_path, stream_name=stream_name)
     return recording
 
 def get_lfp(data_path: str, node_idx=0, rec_idx=0):

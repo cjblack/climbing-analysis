@@ -1,10 +1,10 @@
 from pathlib import Path
 import pandas as pd
-from climbing_analysis.data.session_data import ClimbingSessionData
+from climbing_analysis.data.session import ClimbingSession
 
 def test_climbing_session():
     data_path = Path(__file__).resolve().parent.parent / 'climbing_analysis/data/test_sets/example_session_01'
-    climbing_session = ClimbingSessionData(data_path)
+    climbing_session = ClimbingSession(data_path)
 
     assert isinstance(climbing_session.stances, list)
     assert isinstance(climbing_session.pose_df_list[0], pd.DataFrame)

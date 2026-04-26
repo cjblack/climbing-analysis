@@ -12,6 +12,6 @@ mysql_data/
 .secrets/
 __pycache__/
 *.pyc
-*.egg-info
+climbing_analysis.egg-info/
 .pytest_cache/
 .idea/

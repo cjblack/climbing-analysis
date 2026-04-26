@@ -1,8 +1,6 @@
 from pathlib import Path
 import numpy as np
-import pandas as pd
-import dask.dataframe as dd # to test dask
-from climbing_analysis.ephys.events import detect_camera_on
+from climbing_analysis.multi_modal.alignment import detect_camera_on
 
 def test_video_alignment():
     """Test for extracting video alignment with ephys data
