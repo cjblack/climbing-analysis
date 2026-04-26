@@ -15,7 +15,7 @@ class ClimbingSession:
     Requires processing of video data for pose estimation to be stored within data directory in 'PoseData' folder.
     
     Use:
-    from climbing_analysis.data.session_data import ClimbingSessionData
+    from neurokinematics.data.session_data import ClimbingSessionData
     csession = ClimbingSessionData('path/to/data/directory')
     """
     def __init__(self, session_path, cfg='climbing_sorting_cfg.yaml'):

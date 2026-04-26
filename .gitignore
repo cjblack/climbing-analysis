@@ -6,12 +6,12 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
-climbing_analysis/models/glm.py
+neurokinematics/models/glm.py
 .env
 mysql_data/
 .secrets/
 __pycache__/
 *.pyc
-climbing_analysis.egg-info/
+neurokinematics.egg-info/
 .pytest_cache/
 .idea/

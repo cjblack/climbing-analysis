@@ -13,7 +13,6 @@ from spikeinterface.sorters import run_sorter
 import spikeinterface.widgets as sw
 from neurokinematics.ephys.io import *
 from neurokinematics.ephys.utils import create_probe
-#from climbing_analysis.pose.utils import pixels_to_cm # REMOVE
 #from scipy.ndimage import gaussian_filter1d
 
 

@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "climbing-analysis"
+name = "neurokinematics"
 version = "0.1.0"
 description = "Pipeline for analysing extracellular electrophysiology with freely-moving behaviour"
 authors = [
@@ -24,4 +24,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["climbing_analysis*"]
+include = ["neurokinematics*"]
