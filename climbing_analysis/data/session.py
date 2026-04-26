@@ -6,7 +6,7 @@ from climbing_analysis.decorators import log_call
 from climbing_analysis.pose.io import load_df_list, load_pickle
 from climbing_analysis.ephys.utils import *
 from climbing_analysis.ephys.spike_sorting import *
-from climbing_analysis.ephys.lfp import morlet_lfp, process_lfp
+from climbing_analysis.ephys.preprocessing.lfp import process_lfp
 
 
 class ClimbingSession:
