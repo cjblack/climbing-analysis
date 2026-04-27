@@ -1,9 +1,16 @@
 [![Unit Test](https://github.com/cjblack/neurokinematics/actions/workflows/session_class_test.yml/badge.svg)](https://github.com/cjblack/neurokinematics/actions/workflows/session_class_test.yml)
 
  # Quick install
- Download repository, and create environment:
+ Clone repository, and create environment:
  ```bash
+git clone https://github.com/cjblack/neurokinematics.git
+cd neurokinematics
 conda env create -f environment_redux.yml
+ ```
+
+ For cuda capabilities (recommended if using this pacakge for spike sorting), use the following:
+ ```bash
+ conda env create -f environment_cuda.yml --solver=libmamba
  ```
  
  # Overview
