@@ -1,3 +1,9 @@
+"""Plotting utilities for spike data.
+
+Utilities for visualising spike-sorting outputs and features.
+Provides a lightweight abstraction layer over spikeinterface plotting tools along with project-specific plotting fucntions to simplify plotting and saving figures.
+"""
+
 from pathlib import Path
 import matplotlib.pyplot as plt
 from spikeinterface.sorters import run_sorter
@@ -14,21 +20,60 @@ from scipy.ndimage import gaussian_filter1d
 
 # Simple plots for spike data
 
-def plot_waveform(wfs, channel):
+def plot_waveforms(analyzer, unit_ids: list, max_spikes: int = 100, save_fig: bool = False):
+    """Plots individual and average waveforms of specified units across identified channels.
+
+    Args:
+        analyzer (SortingAnalyzer): Spike sorting analyzer from spikeinterface, can either be used from running the sort function or loading directly from a save.
+        unit_ids (list): List of unit ids to plot.
+        max_spikes (int, optional): Maximum number of single spike waveforms to plot, best to set this number low, especially when plotting multiple units. Defaults to 100.
+        save_fig (bool, optional): Determines whether plot is saved as '.png'. Figure will be saved in the recording directory folder 'unit_plots' Defaults to False.
     """
-    Plot spike waveforms
-    """
-    for x in range(300):
-        plt.plot(wfs[x, :, channel], color='purple', alpha=0.5)
-    plt.plot(np.mean(wfs[:,:,channel],axis=0),color='black', linewidth=2)
+    
+    # lazy correction if plotting one unit
+    if not isinstance(unit_ids, list):
+        unit_ids = [unit_ids]
+
+    # plot unit waveforms using spikewidget function
+    sw.plot_unit_waveforms(analyzer, unit_ids=unit_ids, max_spikes_per_unit=max_spikes)
+    plt.suptitle('Unit Waveforms')
+    plt.tight_layout()
+
+    if save_fig:
+        plots_dir = analyzer.folder.parent / 'unit_plots'
+        plots_dir.mkdir(exist_ok=True)
+        plot_path = plots_dir / 'unit_waveforms.png'
+        plt.savefig(plot_path.as_posix()) # save figure to analyzer path
+
     plt.show()
 
-def plot_autocorrelogram(sorter,unit_ids):
+
+def plot_autocorrelogram(sorter, unit_ids: list, save_fig: bool = False):
+    """Plots autocorrelogram for specified units.
+
+    Args:
+        sorter (SortingExtractor): Spikeinterface Sorting Extractor object. Get from either running sort, or loading from previous sorting.
+        unit_ids (list): List of unit ids to plot.
+        save_fig (bool, optional): Determines whether plot is saved as '.png'. Figure will be saved in the recording directory folder 'unit_plots' Defaults to False.
+    """
+    
+    # lazy correction if plotting one unit
     if not isinstance(unit_ids,list):
         unit_ids = [unit_ids]
+
+    # plot autocorrelograms using spikewidget function
     w = sw.plot_autocorrelograms(sorter, unit_ids=unit_ids)
+    plt.suptitle('Unit Autocorrelograms')
+    plt.tight_layout()
+
+    if save_fig:
+        plots_dir = Path(sorting.get_annotation('phy_folder')).parent.parent / 'unit_plots'
+        plots_dir.mkdir(exist_ok=True)
+        plot_path = plots_dir / 'unit_autocorrelograms.png'
+        plt.savefig(plot_path.as_posix()) # save figure to analyzer path
+
     plt.show()
-    return w
+    #return w
 
 def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], ylim_=[0,100],bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
     """
