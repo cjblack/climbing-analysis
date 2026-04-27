@@ -1,0 +1,16 @@
+# Config for camera alignment test
+name: "camera_alignment_test_cfg"
+camera:
+  manufacturer: "flir"
+  model: "blackfly_s"
+acquisition_settings:
+  record_node: 1
+  record_index: 0
+  event_channel: 67
+  sample_rate: 30000.
+detection_settings:
+  fps: 200.
+  threshold_ratio: 0.3
+  minimum_bout_duration: 0.0
+  bandwidth: 40.
+
