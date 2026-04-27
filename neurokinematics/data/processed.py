@@ -1,5 +1,4 @@
-""" 
-Processed data containers for analysis pipelines.
+""" Processed data containers for analysis pipelines.
 
 This module defines lightweight classes that act as handles to preprocessed data stored on disk. These objects store paths and metadata, and provide methods for loading data on demand.
 
