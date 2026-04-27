@@ -11,9 +11,18 @@ from neurokinematics.utils import check_and_make_directory # this is quite redun
 #from neurokinematics.pose.utils import load_pickle, load_df_list
 
 
-def bandpass_filter(signal, fs, freq, bandwidth=20, order=3):
-    """
-    Bandpass filter for handling event data
+def bandpass_filter(signal, fs: float, freq: float, bandwidth=20, order=3):
+    """Simple bandpass filter. Used for extracting frame times from analog data.
+
+    Args:
+        signal (np.memmap): Analog time series for channel with events
+        fs (float): Sampling rate of analog signal
+        freq (float): Frequency of camera (i.e. frame rate).
+        bandwidth (float, optional): Bandwidth to set low and high pass. Defaults to 20.
+        order (int, optional): Filter order. Defaults to 3.
+
+    Returns:
+        ndarray: Filtered signal.
     """
     nyq = 0.5 * fs
     low = (freq - bandwidth / 2) / nyq
@@ -22,17 +31,33 @@ def bandpass_filter(signal, fs, freq, bandwidth=20, order=3):
     return filtfilt(b, a, signal)
 
 def detect_camera_on(signal, fs, directory:str, detection_settings:dict, save_events=True):
-    """
-    Extracts event times from analog channel recording camera strobe based on rising edge
+    """Extracts frame times on analog channel based on strobe method.
+
+    Args:
+        signal (np.memmap): Analog time series for channel with events
+        fs (float): Sampling rate of analog signal
+        directory (str): Directory path for recording
+        detection_settings (dict): Dictionary of detection settings, either created manually or obtained from load_config
+        save_events (bool, optional): Boolean to determine if resulting frame captures should be stored. Defaults to True.
+
+    Raises:
+        ValueError: Check on appending frame captures. If signal is not long enough, or no strobe signal is present, error will be raised.
+
+    Returns:
+        bouts (list): List of tuples containing start and end times of video recording
+        envelope (ndarray): Envelope of filtered analog signal
+        frame_captures (list): List of stored frame captures
+        frame_map (dataframe): Same as frame captures but stored as a dataframe. Much more conveient for long-term storage and use
     """
     # FLIR camera generates square wave when frames are taken
     # get detection settings
     frame_rate = detection_settings['fps']
     threshold_ratio = detection_settings['threshold_ratio']
     min_bout_duration = detection_settings['minimum_bout_duration']
+    bandwidth = detection_settings['bandwidth']
     
     # Bandpass filter around the square wave frequency
-    filtered = bandpass_filter(signal, fs, frame_rate, bandwidth=40)
+    filtered = bandpass_filter(signal, fs, frame_rate, bandwidth=bandwidth)
 
     # Envelope via Hilbert transform
     envelope = np.abs(hilbert(filtered))
@@ -80,9 +105,19 @@ def detect_camera_on(signal, fs, directory:str, detection_settings:dict, save_ev
 
     return bouts, envelope, frame_captures, frame_map
 
-def get_camera_events(directory, camera_cfg_file: str):
-    """
-    High level function for getting timestamps of camera frames taken during recording
+def get_camera_events(directory: str, camera_cfg_file: str):
+    """High-level call for getting frame times (camera events) from an ephys recording. Requires strobe method to be used for tracking frame captures on an analog channel.
+
+    Args:
+        directory (str): Path for the recording to extract camera events from
+        camera_cfg_file (str): Config file to use for extracting frames. Config files should be stored in the 'configs/multimodal_cfg' folder in this projects root directory
+
+    Returns:
+        event_data (np.memmap): Memory mapped analog signal used for recording camera strobe
+        ts (np.memmap): Timestamps for analog channel
+        bouts (list): List of tuples containing start and end times for each video recorded during ephys session
+        frame_captures (list): List of stored frame captures
+        continuous:
     """
     
     # load config

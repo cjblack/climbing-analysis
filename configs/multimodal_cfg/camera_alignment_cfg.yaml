@@ -12,4 +12,5 @@ detection_settings:
   fps: 200.
   threshold_ratio: 0.3
   minimum_bout_duration: 0.1
+  bandwidth: 40.
 
