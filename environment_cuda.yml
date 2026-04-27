@@ -1,0 +1,37 @@
+# Environment file to test pytorch-cuda install - NVIDIA GPU 50 series
+name: neurokinematics_cuda
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - pandas=2.3.3
+  - matplotlib
+  - h5py
+  - pytables
+  - psutil
+  - scikit-learn
+  - datajoint
+  - dask
+  - dask-jobqueue
+  - dask-ml
+  - mne
+  - xmltodict
+  - xarray
+  - zarr
+  - pyyaml
+  - pytest
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - torch
+      - torchvision
+      - torchaudio
+      - kilosort[gui]
+      - open-ephys-python-tools
+      - spikeinterface
+      - huggingface-hub
+      - -e .

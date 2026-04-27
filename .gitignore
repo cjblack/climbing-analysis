@@ -13,7 +13,14 @@ mysql_data/
 __pycache__/
 tests/__pycache__
 *.pyc
-neurokinematics.egg-info/
-climbing_analysis.egg-info/
 .pytest_cache/
 .idea/
+
+# Pkg info
+neurokinematics.egg-info/
+climbing_analysis.egg-info/
+
+# Data folders/files
+sample_oephys_data/
+sko109120_baseline_stances.pkl
+sko109120_baseline_pose.csv
