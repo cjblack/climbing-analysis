@@ -6,9 +6,11 @@ This module defines lightweight, "lazy" classes that represent outputs from prep
 """
 
 from dataclasses import dataclass
+import pathlib
 from pathlib import Path
+from typing import Optional
 
-from neurokinematics.io import load_zarr, load_memmap, load_json, load_csv
+from neurokinematics.io import load_zarr, load_memmap, load_json, load_csv, load_pickle
 
 @dataclass
 class LFPProcessed:
@@ -45,12 +47,17 @@ class LFPProcessed:
 class PoseProcessed:
     """Lightweight class for preprocessed pose data.
     """
-    output_path: Path
+    pose_output_path: Path
     storage_format: str
     preprocess: dict
     fps: float
+    movement_output_path: Optional[Path] = None
 
-    def load(self, pkg_format: str = 'dask'):
+    def load_pose(self, pkg_format: str = 'dask'):
         if self.storage_format == "csv":
-            data = load_csv(self.output_path, pkg_format=pkg_format)
+            data = load_csv(self.pose_output_path, pkg_format=pkg_format)
+            return data
+    def load_movement(self, pkg_format: str = 'pandas'):
+        if type(self.movement_output_path) == pathlib.WindowsPath:
+            data = load_pickle(self.movement_output_path, pkg_format)
             return data

@@ -1,10 +1,28 @@
+pose_format:
+  pose_type: 'sleap'
+  file_format: 'h5'
+  frame_rate: 200.
 pose_preprocessing:
   fill_missing: true
-
   confidence:
-    enabled: true
+    enabled: false
     thresh: 0.7
-
   velocity:
-    enabled: true
+    enabled: false
     thresh: 20
+post_processing:
+  storage_format: 'csv' # right now this isn't doing much as data is stored as csv by default
+movement_detection:
+  enabled: true
+  sort_cols:
+    - 'Trial'
+    - 'Date'
+    - 'frame_id'
+  group_cols:
+    - 'Trial'
+    - 'Date'
+  node_list:
+    - 'r_forepaw'
+    - 'l_forepaw'
+    - 'r_hindpaw'
+    - 'l_hindpaw'

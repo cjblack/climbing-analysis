@@ -126,9 +126,16 @@ def load_memmap(file_path: str, shape: tuple, dtype: str ="float32", mode: str =
     """
     return np.memmap(file_path, dtype=dtype, mode=mode, shape=tuple(shape))
 
-def load_pickle(filename: str):
-    with open(filename, "rb") as f:  # "rb" = read binary
-        data = pickle.load(f)
+def load_pickle(filename: str, pkg_format: str = 'default'):
+    
+    pkg_format = pkg_format.lower()
+    if pkg_format == 'default':
+        with open(filename, "rb") as f:  # "rb" = read binary
+            data = pickle.load(f)
+    elif pkg_format == 'pandas':
+        data = pd.read_pickle(filename)
+    #elif pkg_format == 'dask':
+    #    data = dd.read_pickle(filename)
     return data
 
 def load_config(filename: str, config_type: str | None = None):
