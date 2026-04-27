@@ -34,7 +34,7 @@ CFG_ROOT_PATH = Path(__file__).resolve().parent.parent / 'configs'
 CFG_PATHS = {
     'multimodal': CFG_ROOT_PATH / 'multimodal_cfg',
     'pose': CFG_ROOT_PATH / 'pose_cfg',
-    'spike': CFG_ROOT_PATH / 'spike_cfg'
+    'spksorting': CFG_ROOT_PATH / 'spk_sorting_cfg'
 }
 
 ###

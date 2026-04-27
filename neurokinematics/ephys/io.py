@@ -28,7 +28,6 @@ from open_ephys.analysis import Session
 from neurokinematics.io import load_config
 
 CHANNEL_MAP_PATH = Path(__file__).resolve().parent / 'channel_maps'
-SORTING_CFG_PATH = Path(__file__).resolve().parent.parent.parent / 'configs' / 'spike_cfg'
 PROBE_INTERFACE_PATH = Path(__file__).resolve().parent / 'probe_interfaces'
 
 RECORDING_READERS = {
@@ -90,7 +89,7 @@ def load_analyzer(directory: str):
     """Load spikeinterface sorting analyzer.
 
     Args:
-        directory (str): Path to sorting analyzer
+        directory (str): Path to sorting analyzer. Neuro
 
     Returns:
         analyzer (SortingAnalyzer): Spikeinterface sorting analyzer
@@ -147,7 +146,7 @@ def get_sorting_cfg(cfg: str):
         sorting_cfg (dict): Dictionary containing information to use during spike sorting
     """
 
-    sorting_cfg = load_config(str(SORTING_CFG_PATH / cfg))
+    sorting_cfg = load_config(cfg, config_type='spksorting') #load_config(str(SORTING_CFG_PATH / cfg))
     return sorting_cfg
 
 ###
