@@ -25,6 +25,19 @@ import dask.dataframe as dd
 import yaml
 
 ###
+### CONFIG PATHS
+###
+
+CFG_ROOT_PATH = Path(__file__).resolve().parent.parent / 'configs'
+
+
+CFG_PATHS = {
+    'multimodal': CFG_ROOT_PATH / 'multimodal_cfg',
+    'pose': CFG_ROOT_PATH / 'pose_cfg',
+    'spike': CFG_ROOT_PATH / 'spike_cfg'
+}
+
+###
 ### SAVING
 ###
 
@@ -118,7 +131,18 @@ def load_pickle(filename: str):
         data = pickle.load(f)
     return data
 
-def load_config(filename: str):
+def load_config(filename: str, config_type: str | None = None):
+    """Load yaml files as dictionaries.
+
+    Args:
+        filename (str): Config file name ending in '.yaml'
+        config_type (str | None, optional): Type of config file, simplify accessing config folders. Options: 'pose', 'multimodal', 'spike', None. If None, it will only load the config file if the full path to the file is provided. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+    if type(config_type) == str:
+        filename = CFG_PATHS[config_type] / filename
     with open(filename, "r") as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
     return config

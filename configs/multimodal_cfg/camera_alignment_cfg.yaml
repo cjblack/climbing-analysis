@@ -1,0 +1,14 @@
+# Sample config for camera alignment
+name: "camera_alignment_cfg"
+camera:
+  manufacturer: "flir"
+  model: "blackfly_s"
+record_settings:
+  record_node: 1
+  record_index: 0
+  event_channel: 67
+detection_settings:
+  fps: 200.
+  threshold_ratio: 0.3
+  mininmum_bout_duration: 0.1
+
