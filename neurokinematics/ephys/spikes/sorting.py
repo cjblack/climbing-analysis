@@ -4,17 +4,11 @@
 """
 
 from pathlib import Path
-import matplotlib.pyplot as plt
 from spikeinterface import create_sorting_analyzer
 from spikeinterface.exporters import export_to_phy
-from spikeinterface.extractors import read_phy
 from spikeinterface.sorters import run_sorter
-#from spikeinterface.core import load_sorting_analyzer
-import spikeinterface.widgets as sw
 from neurokinematics.ephys.io import *
 from neurokinematics.ephys.utils import create_probe
-#from scipy.ndimage import gaussian_filter1d
-
 
 def sort(data_path: str, cfg_file:str): 
     """Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe.
@@ -30,6 +24,9 @@ def sort(data_path: str, cfg_file:str):
         recording: Recording object, point to binary data.
         probe: Probe information from recording. This is based on the spike_cfg used
         analyzer: Spikeinterface analyzer object.
+
+    Usage:
+        sorting, recording, probe, analyzer = sort('path/to/datafolder', cfg_file='cfg_file.yaml')
     """
     # Load sorting params
     sorting_cfg = get_sorting_cfg(cfg_file)
@@ -41,6 +38,7 @@ def sort(data_path: str, cfg_file:str):
     group_mode = sorting_cfg['group_mode']
     channel_map = sorting_cfg['channel_map']
     stream_name = sorting_cfg['stream_name']
+    to_compute = sorting_cfg['to_compute']
     
     data_path = Path(data_path) # windows path
     output_folder = data_path / sorter # set output folder for kilosort
@@ -56,17 +54,17 @@ def sort(data_path: str, cfg_file:str):
 
     # save recording as binary format to kilosort4 folder
     recording.save_to_folder(data_path=recording_path) # might not need to run this step...**
-    analyzer = sorting_analyzer(sorting, recording, data_path) # create sorting analyzer
+    analyzer = sorting_analyzer(sorting, recording, data_path, compute_dict = to_compute) # create sorting analyzer
     export_to_phy(analyzer, output_folder=phy_folder) # export to phy for visualization
     return sorting, recording, probe, analyzer
 
-def sorting_analyzer(sorting, recording, data_path):
+def sorting_analyzer(sorting, recording, data_path, compute_dict: dict):
     """
     Create sorting analyzer
     """
     folder = data_path / 'sorting_analyzer'
     analyzer = create_sorting_analyzer(sorting=sorting, recording=recording, format='binary_folder',return_in_uV=True,folder=folder)
-    analyzer.compute(['random_spikes', 'waveforms', 'templates', 'noise_levels', 'spike_locations'])
+    analyzer.compute(compute_dict)#(['random_spikes', 'waveforms', 'templates', 'noise_levels', 'spike_locations'])
     _ = analyzer.compute('spike_amplitudes')
     _ = analyzer.compute('principal_components', n_components=5, mode="by_channel_local")
     return analyzer

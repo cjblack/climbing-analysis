@@ -67,7 +67,7 @@ def plot_autocorrelogram(sorter, unit_ids: list, save_fig: bool = False):
     plt.tight_layout()
 
     if save_fig:
-        plots_dir = Path(sorting.get_annotation('phy_folder')).parent.parent / 'unit_plots'
+        plots_dir = Path(sorter.get_annotation('phy_folder')).parent.parent / 'unit_plots'
         plots_dir.mkdir(exist_ok=True)
         plot_path = plots_dir / 'unit_autocorrelograms.png'
         plt.savefig(plot_path.as_posix()) # save figure to analyzer path
