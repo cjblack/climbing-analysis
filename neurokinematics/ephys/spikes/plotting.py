@@ -75,6 +75,60 @@ def plot_autocorrelogram(sorter, unit_ids: list, save_fig: bool = False):
     plt.show()
     #return w
 
+def plot_movement_psth(alignment, sorter, unit_ids: list, movement_plot_params: dict):
+    # lazy correction if plotting one unit
+    if not isinstance(unit_ids,list):
+        unit_ids = [unit_ids]
+    pre_event = movement_plot_params['pre_event']
+    post_event = movement_plot_params['post_event']
+    node = movement_plot_params['node']
+    movement_event = movement_plot_params['movement_event']
+    aligned_movements = alignment.query("node==@node & movement_event==@movement_event")['event_times_ts'].values
+
+    no_plots = len(unit_ids)
+    fig, ax = plt.subplots(nrows=no_plots)
+    aligned_spike_times = []
+    for uid in unit_ids:
+        spike_times = sorter.get_unit_spike_train_in_seconds(unit_id=uid)
+        for am in aligned_movements:
+            spikes_in_window = spike_times[(spike_times>(am-pre_event)) & (spike_times <=(am+post_event))]
+            aligned_spike_times.append(spikes_in_window - am)
+    for i, x in enumerate(aligned_spike_times):
+        ax.vlines(x, i+0, i+1, color='black', lw=1)
+    ax.axvline(0.0, linestyle='--', color='red', linewidth=0.75, alpha=0.5)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Trial id')
+    ax.set_title(f'Spike raster unit {unit_ids} - {node} {movement_event}')
+    plt.tight_layout()
+    plt.show()
+    return aligned_spike_times
+# for ii in range(len(frame_captures)):
+#     bt = frame_captures[ii]/30000
+#     bout_start_id = len(bt) - (dflist[trial_ids_sort[ii]].__len__())
+#     times_ = np.array(stances[trial_ids_sort[ii]][node][epoch_loc])
+#     aligned_spikes = spike_train - bt[bout_start_id]
+#     spks_per_trial = []
+
+#     # Get kinematics of node for corresponding trial
+#     movement = dflist[trial_ids_sort[ii]][node+'_Y'].to_numpy()
+#     # Get kinematics of mirror node for corresponding trial
+#     mirror_movement = dflist[trial_ids_sort[ii]][mirror_node+'_Y'].to_numpy()
+#     for i, tstart in enumerate(times_):
+#         tstart_samp = tstart
+#         tstart = tstart/200.0
+#         spikes_in_window = aligned_spikes[(aligned_spikes>(tstart-0.5)) & (aligned_spikes <=(tstart+0.5))]
+#         spikes_to_store.append(spikes_in_window-tstart)
+#         spks_per_trial.append([i,spikes_in_window-tstart])
+
+#         # Store kinematics of node
+#         kin_to_store.append((movement[tstart_samp-100:tstart_samp+100]-movement[tstart_samp])*pixels_to_cm())
+#         # Store kinematics of mirrored node
+#         mirror_kin_to_store.append((mirror_movement[tstart_samp-100:tstart_samp+100]-movement[tstart_samp])*pixels_to_cm())
+#         counts, _ = np.histogram(spikes_in_window-tstart, bins=np.arange(xlim_[0],xlim_[1]+bin_size,bin_size))
+#         all_counts.append(counts)
+#     spks_per_trial_total.append(spks_per_trial)
+
+
 def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], ylim_=[0,100],bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
     """
     Plot peristimulus time histogram from session
