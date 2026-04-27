@@ -1,7 +1,7 @@
 """ 
 Processed data containers for analysis pipelines.
 
-This module defines lightweight, "lazy" classes that represent outputs from preprocessing steps. These objects serve as handles for data stored on disk, rather than in memory.
+This module defines lightweight classes that act as handles to preprocessed data stored on disk. These objects store paths and metadata, and provide methods for loading data on demand.
 
 """
 

@@ -59,7 +59,7 @@ def process_sleap(data_path: str, pose_cfg: str):
         preprocess=preprocessing
     )
 
-    # save dataframe - right now we're computing before saving
+    # save dataframe, this is eager as we need to compute before saving
     ddf = ddf.compute()
     ddf.to_csv(pose_output_path)
 
