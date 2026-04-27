@@ -4,8 +4,11 @@ from scipy.ndimage import label
 import numpy as np
 import pandas as pd
 import dask.dataframe as dd
-from neurokinematics.utils import check_and_make_directory
-from neurokinematics.pose.utils import load_pickle, load_df_list
+
+from neurokinematics.io import load_config
+from neurokinematics.ephys.io import get_continuous
+from neurokinematics.utils import check_and_make_directory # this is quite redundant
+#from neurokinematics.pose.utils import load_pickle, load_df_list
 
 
 def bandpass_filter(signal, fs, freq, bandwidth=20, order=3):
@@ -18,12 +21,16 @@ def bandpass_filter(signal, fs, freq, bandwidth=20, order=3):
     b, a = butter(order, [low, high], btype='band')
     return filtfilt(b, a, signal)
 
-def detect_camera_on(signal, fs, directory:str, frame_rate=200, threshold_ratio=0.3, min_bout_duration=0.1, save_events=True):
+def detect_camera_on(signal, fs, directory:str, detection_settings:dict, save_events=True):
     """
     Extracts event times from analog channel recording camera strobe based on rising edge
     """
     # FLIR camera generates square wave when frames are taken
-
+    # get detection settings
+    frame_rate = detection_settings['fps']
+    threshold_ratio = detection_settings['threshold_ratio']
+    min_bout_duration = detection_settings['minimum_bout_duration']
+    
     # Bandpass filter around the square wave frequency
     filtered = bandpass_filter(signal, fs, frame_rate, bandwidth=40)
 
@@ -65,6 +72,7 @@ def detect_camera_on(signal, fs, directory:str, frame_rate=200, threshold_ratio=
     if not frame_rows:
         raise ValueError("frame_rows is empty; no frames were identified")
     frame_map = pd.concat(frame_rows, ignore_index=True)
+
     if save_events:
         events_directory = directory+'/events'
         check_and_make_directory(events_directory) # check that directory exists, if not then create it
@@ -72,17 +80,27 @@ def detect_camera_on(signal, fs, directory:str, frame_rate=200, threshold_ratio=
 
     return bouts, envelope, frame_captures, frame_map
 
-def get_camera_events(directory, node_idx=1, rec_idx=0, event_channel= 67, threshold_ratio=0.3):
+def get_camera_events(directory, camera_cfg_file: str):
     """
     High level function for getting timestamps of camera frames taken during recording
     """
-    print('Check analog channel for frames')
-    session = Session(directory)
-    continuous = session.recordnodes[node_idx].recordings[rec_idx].continuous[0]
-    fs = continuous.metadata.sample_rate#continuous.metadata['sample_rate']
-    event_data = continuous.samples[:,event_channel]
-    ts = continuous.sample_numbers/fs
+    
+    # load config
+    cfg = load_config(camera_cfg_file, config_type='multimodal') # get camera config from multimodal_cfgs folder
+    record_settings = cfg['acquisition_settings'] # settings for ephys acquisition channel used for alignment
+    detection_settings = cfg['detection_settings'] # detection settings for identifying frames
 
-    bouts, envelope, frame_captures, frame_map = detect_camera_on(event_data, fs, directory=directory)
+    node_idx = record_settings['record_node']
+    rec_idx = record_settings['record_index']
+    event_channel = record_settings['event_channel']
+
+    print('Check analog channel for frames')
+    continuous, _ = get_continuous(directory, node_idx=node_idx, rec_idx=rec_idx)
+    sample_rate = continuous.metadata.sample_rate #continuous.metadata['sample_rate']
+
+    event_data = continuous.samples[:,event_channel]
+    ts = continuous.sample_numbers/sample_rate
+
+    bouts, envelope, frame_captures, frame_map = detect_camera_on(event_data, sample_rate, directory, detection_settings)
 
     return event_data, ts, bouts, frame_captures, continuous
