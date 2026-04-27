@@ -6,14 +6,14 @@ Provides a lightweight abstraction layer over spikeinterface plotting tools alon
 
 from pathlib import Path
 import matplotlib.pyplot as plt
-from spikeinterface.sorters import run_sorter
-from spikeinterface import create_sorting_analyzer
-from spikeinterface.exporters import export_to_phy
-from spikeinterface.extractors import read_phy
-from spikeinterface.core import load_sorting_analyzer
+#from spikeinterface.sorters import run_sorter
+#from spikeinterface import create_sorting_analyzer
+#from spikeinterface.exporters import export_to_phy
+#from spikeinterface.extractors import read_phy
+#from spikeinterface.core import load_sorting_analyzer
 import spikeinterface.widgets as sw
 from neurokinematics.ephys.io import *
-from neurokinematics.ephys.utils import create_probe
+#from neurokinematics.ephys.utils import create_probe
 from neurokinematics.pose.utils import pixels_to_cm # REMOVE
 from scipy.ndimage import gaussian_filter1d
 

@@ -1,14 +1,15 @@
-from open_ephys.analysis import Session
+from pathlib import Path
+
 from scipy.signal import hilbert, butter, filtfilt
 from scipy.ndimage import label
 import numpy as np
 import pandas as pd
-import dask.dataframe as dd
 
-from neurokinematics.io import load_config
+
+from neurokinematics.io import load_config, load_csv, load_pickle
 from neurokinematics.ephys.io import get_continuous
 from neurokinematics.utils import check_and_make_directory # this is quite redundant
-#from neurokinematics.pose.utils import load_pickle, load_df_list
+
 
 
 def bandpass_filter(signal, fs: float, freq: float, bandwidth=20, order=3):
@@ -139,3 +140,57 @@ def get_camera_events(directory: str, camera_cfg_file: str):
     bouts, envelope, frame_captures, frame_map = detect_camera_on(event_data, sample_rate, directory, detection_settings)
 
     return event_data, ts, bouts, frame_captures, continuous
+
+def align_movements_to_ephys(directory: str, movement_events: list = ['start', 'end', 'max'], fs: float = 30000., fps: float = 200.): # frame_captures_df, movements_df, pose_df,
+    """Aligns movement events to ephys timestamps and saves results in `pose/events` folder.
+
+    Args:
+        directory (str): Root directory of ephys data
+        movement_events (list, optional): List of movement events. Defaults to ['start', 'end', 'max'].
+        fs (float, optional): Sampling rate of ephys acquisition. Defaults to 30000..
+        fps (float, optional): Frame rate of camera. Defaults to 200..
+
+    Returns:
+        records_df (pd.DataFrame): Dataframe containing times of movement events translated to ephys samples/timestamps
+    """
+    
+    # create paths
+    movement_df_path = Path(directory) / 'pose' / 'movement_events.pkl'
+    pose_df_path = Path(directory) / 'pose' / 'pose_data.csv'
+    frame_captures_df_path = Path(directory) / 'events' / 'video_alignment.csv'
+    event_alignment_df_path = Path(directory) / 'events' / 'movement_event_alignment.csv'
+    
+    # load into dataframes
+    movements_df = load_pickle(movement_df_path, pkg_format='pandas')
+    pose_df = load_csv(pose_df_path, pkg_format='pandas')
+    frame_captures_df = load_csv(frame_captures_df_path, pkg_format='pandas')
+
+    trials_array = movements_df['trial'].unique()
+    nodes = movements_df.keys().drop(['date', 'trial'])
+    #resolve_id = lambda x, y: x[np.argmin(np.abs(x-y))]
+    records = []
+    for t in trials_array:
+        frames_in_trial = frame_captures_df.query('video_index==@t')['sample_index'].values
+        movements_during_trial = movements_df.query('trial==@t')
+        no_frame_captures = pose_df.query('Trial==@t').__len__() # number of recorded frames
+        frame_capture_start_id = len(frames_in_trial) - no_frame_captures # start id of pose data in analog frame events
+        for node in nodes:
+            node_movements = movements_during_trial[node]
+            for me in movement_events:
+                node_movement_events = node_movements[me]
+                for i in node_movement_events:
+                    aligned_sample_samp = frames_in_trial[frame_capture_start_id+i]
+                    aligned_sample_ts = aligned_sample_samp / fs
+
+                    records.append({
+                        "trial": t,
+                        "node": node,
+                        "movement_event": me,
+                        "frame_ids": i,
+                        "event_times_ts": aligned_sample_ts,
+                        "event_times_samples": aligned_sample_samp
+                    })
+    records_df = pd.DataFrame.from_records(records)
+    records_df.to_csv(event_alignment_df_path)
+
+    return records_df
