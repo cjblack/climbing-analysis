@@ -18,7 +18,6 @@ from neurokinematics.io import load_zarr, load_memmap, load_json, load_csv, load
 ### For ephys
 ###
 
-
 @dataclass
 class LFPProcessed:
     """Lightweight class for preprocessed lfp data and associated metadata.
@@ -50,8 +49,11 @@ class LFPProcessed:
                 return data, metadata
             return data
         
+
 @dataclass
 class SpikeRasterProcessed:
+    """Lightweight class for computed spike rasters.
+    """
 
     unit_ids: np.ndarray
     nodes: np.ndarray
@@ -61,14 +63,25 @@ class SpikeRasterProcessed:
     partition_cols: Optional[list] = None
     
     def load(self):
+        """Load spike raster data
+
+        Returns:
+            data (pd.DataFrame): Dataframe containing spike raster data aligned to event onset.
+        """
         if type(self.output_path) == pathlib.WindowsPath:
             if self.storage_format == 'pickle':
                 data = load_pickle(self.output_path, method='pandas')
                 return data
             if self.storage_format == 'parquet':
+                # Storing and loading ragged data with parquet has not been fully tested here. It may lead to problems with formatting of spike rasters, if so, switch to pickle for load and save calls.
                 data = pd.read_parquet(self.output_path, partition_cols = self.partition_cols)
                 return data
-        
+
+
+###
+### For pose
+###
+
 @dataclass
 class PoseProcessed:
     """Lightweight class for preprocessed pose data.
