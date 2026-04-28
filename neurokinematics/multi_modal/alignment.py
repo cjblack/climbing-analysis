@@ -1,3 +1,4 @@
+import pathlib
 from pathlib import Path
 
 from scipy.signal import hilbert, butter, filtfilt
@@ -144,11 +145,17 @@ def get_camera_events(directory: str, camera_cfg_file: str, save_path: Path | st
 
     return event_data, ts, bouts, frame_captures, continuous
 
-def align_movements_to_ephys(dirs: list, fs: float = 30000., fps: float = 200., save_path: Path | str | None = None): # frame_captures_df, movements_df, pose_df,  movement_events: list = ['start', 'end', 'max'],
+def align_movements_to_ephys(dirs: dict, fs: float = 30000., fps: float = 200., save_path: Path | str | None = None): # frame_captures_df, movements_df, pose_df,  movement_events: list = ['start', 'end', 'max'],
     """Aligns movement events to ephys timestamps and saves results in `pose/events` folder.
 
     Args:
-        dirs (list): List of directory strings containing `movement_events_.pkl` and `pose_data.csv` ['dir/with/movement_events', 'dir/with/pose_data']
+        dirs (dict): Dictionary of directory strings/Paths containing `movement_events_.pkl`, `pose_data.csv`, and `video_alignment.csv`. 
+        dirs ={
+            'events': path/to/event_pkls, 
+            'pose': path/to/pose_csvs, 
+            'alignment': path/to/alignment_csvs
+            }
+        
         fs (float, optional): Sampling rate of ephys acquisition. Defaults to 30000..
         fps (float, optional): Frame rate of camera. Defaults to 200..
         save_path (Path | str | None, optional): Directory to save results to. Defaults to None.
@@ -159,17 +166,17 @@ def align_movements_to_ephys(dirs: list, fs: float = 30000., fps: float = 200., 
     """
     
     # create paths
-    if len(dirs) == 1:
-        movement_df_path = Path(dirs[0]) / 'movement_events.pkl'
-        pose_df_path = Path(dirs[0]) / 'pose_data.csv'
-    else:
-        movement_df_path = Path(dirs[0]) / 'movement_events.pkl'
-        pose_df_path = Path(dirs[1]) / 'pose_data.csv'
-    frame_captures_df_path = Path(directory) / 'events' / 'video_alignment.csv'
+    movement_df_path = Path(dirs['events']) / 'movement_events.pkl'
+    pose_df_path = Path(dirs['pose']) / 'pose_data.csv'
+    frame_captures_df_path = Path(dirs['alignment']) / 'video_alignment.csv'
+    #frame_captures_df_path = Path(directory) / 'events' / 'video_alignment.csv'
     #event_alignment_df_path = Path(save_path) / 'events'
     #event_alignment_df_path.mkdir(parents=True, exist_ok=True)
-    event_alignment_df_path = Path(save_path) / 'movement_event_alignment.csv'
-    #event_alignment_df_path = Path(directory) / 'events' / 'movement_event_alignment.csv'
+    
+    if save_path:
+        event_alignment_df_path = Path(save_path) / 'movement_event_alignment.csv'
+    else:
+        event_alignment_df_path = Path(dirs['alignment']) / 'movement_event_alignment.csv'
     
     # load into dataframes
     movements_df = load_pickle(movement_df_path, method='pandas')
