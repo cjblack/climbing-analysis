@@ -72,24 +72,93 @@ def plot_autocorrelogram(sorter, unit_ids: list, save_fig: bool = False):
         plt.savefig(plot_path.as_posix()) # save figure to analyzer path
 
     plt.show()
-    #return w
 
-def plot_movement_psth(alignment, sorter, unit_ids: list, movement_plot_params: dict, save_fig = False):
+def plot_psth(rasters_df, unit_ids: list, movement_plot_params: dict | None = None): #, save_fig = False):
     # lazy correction if plotting one unit
     if not isinstance(unit_ids,list):
         unit_ids = [unit_ids]
     
-    pre_event = movement_plot_params['pre_event']
-    post_event = movement_plot_params['post_event']
-    node = movement_plot_params['node']
-    movement_event = movement_plot_params['movement_event']
-    mpl_cmap = movement_event['cmap']
+    # get movement plot params
+    if movement_plot_params:
+        # dictionary extraction if provided
+        node = movement_plot_params['node']
+        movement_event = movement_plot_params['movement_event']
+        mpl_cmap = movement_plot_params['cmap']
+    else:
+        # if no movement_plot_params given then defaults to first node and movement event
+        node = rasters_df['node'].unique()[0]
+        movement_event = rasters_df['movement_event'].unique()[0]
+        mpl_cmap = 'default'
+
+    n = len(unit_ids)
+    ncols = min(5, n)
+    nrows = math.ceil(n / 5)
+    if mpl_cmap == 'default':
+        cmap = lambda i: 'black'
+    else:
+        cmap = plt.get_cmap(mpl_cmap, n)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
+    axes = np.array(axes).reshape(nrows,ncols)
+    
+    for i, uid in enumerate(unit_ids):
+        rasters = raster_df.query("unit_id==@uid & node==@node & movement_event==@movement_event")
+        raster_index = rasters.index[0] # correct for starting position in row of raster
+        row = i // ncols
+        col = i % ncols
+        ax = axes[row, col]
+        for ii, row in rasters.iterrows():
+            pos_ = ii-raster_index
+            spks = row['spike_raster']
+            ax.vlines(spks, pos_+0, pos_+1, color=cmap(i), lw=1)
+        ax.axvline(0.0, linestyle='--', color='red', linewidth=0.75, alpha=0.5)
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Movement Index')
+        ax.set_title(f"Unit id: {uid}")
+    for j in range(n, nrows*ncols):
+        row = j // ncols
+        col = j % ncols
+        axes[row, col].axis('off')
+
+    plt.suptitle(f'Spike rasters: {node} {movement_event} movement')
+    plt.tight_layout()
+    # if save_fig:
+    #     plots_dir = Path(sorter.get_annotation('phy_folder')).parent.parent / 'unit_plots'
+    #     plots_dir.mkdir(exist_ok=True)
+    #     plot_path = plots_dir / f'{node}_{movement_event}_rasters.png'
+    #     plt.savefig(plot_path.as_posix()) # save figure to analyzer path
+
+    plt.show()
+
+
+def plot_movement_psth(alignment, sorter, unit_ids: list, movement_plot_params: dict | None = None, save_fig = False):
+    # lazy correction if plotting one unit
+    if not isinstance(unit_ids,list):
+        unit_ids = [unit_ids]
+    
+    # get movement plot params
+    if movement_plot_params:
+        # dictionary extraction if provided
+        pre_event = movement_plot_params['pre_event']
+        post_event = movement_plot_params['post_event']
+        node = movement_plot_params['node']
+        movement_event = movement_plot_params['movement_event']
+        mpl_cmap = movement_plot_params['cmap']
+    else:
+        # if no movement_plot_params given then defaults to first node and movement event
+        pre_event = 0.5
+        post_event = 0.5
+        node = alignment['node'].unique()[0]
+        movement_event = alignment['movement_event'].unique()[0]
+        mpl_cmap = 'default'
 
     aligned_movements = alignment.query("node==@node & movement_event==@movement_event")['event_times_ts'].values
     n = len(unit_ids)
     ncols = min(5, n)
     nrows = math.ceil(n / 5)
-    cmap = plt.get_cmap(mpl_cmap, n)
+    if mpl_cmap == 'default':
+        cmap = lambda i: 'black'
+    else:
+        cmap = plt.get_cmap(mpl_cmap, n)
     fig, axes = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
     axes = np.array(axes).reshape(nrows,ncols)
     aligned_spike_times = []
@@ -103,7 +172,7 @@ def plot_movement_psth(alignment, sorter, unit_ids: list, movement_plot_params: 
             "unit_id": uid,
             "movement_event": movement_event,
             "node": node,
-            "spike_rasters": spike_rasters
+            "spike_rasters": [np.asarray(sr) for sr in spike_rasters]
         })
     for i, raster_data in enumerate(aligned_spike_times):
         raster = raster_data['spike_rasters']
@@ -131,31 +200,7 @@ def plot_movement_psth(alignment, sorter, unit_ids: list, movement_plot_params: 
 
     plt.show()
     return aligned_spike_times
-# for ii in range(len(frame_captures)):
-#     bt = frame_captures[ii]/30000
-#     bout_start_id = len(bt) - (dflist[trial_ids_sort[ii]].__len__())
-#     times_ = np.array(stances[trial_ids_sort[ii]][node][epoch_loc])
-#     aligned_spikes = spike_train - bt[bout_start_id]
-#     spks_per_trial = []
 
-#     # Get kinematics of node for corresponding trial
-#     movement = dflist[trial_ids_sort[ii]][node+'_Y'].to_numpy()
-#     # Get kinematics of mirror node for corresponding trial
-#     mirror_movement = dflist[trial_ids_sort[ii]][mirror_node+'_Y'].to_numpy()
-#     for i, tstart in enumerate(times_):
-#         tstart_samp = tstart
-#         tstart = tstart/200.0
-#         spikes_in_window = aligned_spikes[(aligned_spikes>(tstart-0.5)) & (aligned_spikes <=(tstart+0.5))]
-#         spikes_to_store.append(spikes_in_window-tstart)
-#         spks_per_trial.append([i,spikes_in_window-tstart])
-
-#         # Store kinematics of node
-#         kin_to_store.append((movement[tstart_samp-100:tstart_samp+100]-movement[tstart_samp])*pixels_to_cm())
-#         # Store kinematics of mirrored node
-#         mirror_kin_to_store.append((mirror_movement[tstart_samp-100:tstart_samp+100]-movement[tstart_samp])*pixels_to_cm())
-#         counts, _ = np.histogram(spikes_in_window-tstart, bins=np.arange(xlim_[0],xlim_[1]+bin_size,bin_size))
-#         all_counts.append(counts)
-#     spks_per_trial_total.append(spks_per_trial)
 
 
 def plot_session_psth(unit_ids, sorting, dflist, frame_captures, stances, node='r_forepaw', epoch_loc='start', xlim_=[-0.5,0.5], ylim_=[0,100],bin_size=0.02, smooth_sigma=1.0, prune_trials=True,save_fig=None):
