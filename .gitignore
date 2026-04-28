@@ -24,3 +24,7 @@ climbing_analysis.egg-info/
 sample_oephys_data/
 sko109120_baseline_stances.pkl
 sko109120_baseline_pose.csv
+
+# datajoint
+neurokinematics/schema.py
+dj_config.py
