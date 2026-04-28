@@ -25,6 +25,11 @@ sample_oephys_data/
 sko109120_baseline_stances.pkl
 sko109120_baseline_pose.csv
 
+# experimental
+neurokinematics/state_space_analysis/
+neurokinematics/distributed/
+neurokinematics/models/
+
 # datajoint
 neurokinematics/schema.py
 dj_config.py
