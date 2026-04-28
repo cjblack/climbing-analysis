@@ -61,6 +61,14 @@ def saveas_dataframe_to_csv(file_path: str, data: list):
     df = pd.DataFrame(data)
     df.to_csv(file_path, index=False)
 
+def save_dataframe(df, file_path, storage_format:str = 'csv', **kwargs):
+
+    if storage_format == 'csv':
+        df.to_csv(file_path)
+    elif storage_format == 'pickle':
+        df.to_pickle(file_path)
+    elif storage_format == 'parquet':
+        df.to_parquet(file_path, **kwargs)
 
 ###
 ### LOADING...
