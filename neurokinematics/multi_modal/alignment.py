@@ -8,7 +8,7 @@ import pandas as pd
 
 from neurokinematics.io import load_config, load_csv, load_pickle
 from neurokinematics.ephys.io import get_continuous
-from neurokinematics.utils import check_and_make_directory # this is quite redundant
+#from neurokinematics.utils import check_and_make_directory # this is quite redundant
 
 
 
@@ -31,15 +31,15 @@ def bandpass_filter(signal, fs: float, freq: float, bandwidth=20, order=3):
     b, a = butter(order, [low, high], btype='band')
     return filtfilt(b, a, signal)
 
-def detect_camera_on(signal, fs, directory:str, detection_settings:dict, save_events=True):
+
+def detect_camera_on(signal, fs, detection_settings:dict, save_path: Path | str | None = None):#save_events=True):
     """Extracts frame times on analog channel based on strobe method.
 
     Args:
         signal (np.memmap): Analog time series for channel with events
         fs (float): Sampling rate of analog signal
-        directory (str): Directory path for recording
         detection_settings (dict): Dictionary of detection settings, either created manually or obtained from load_config
-        save_events (bool, optional): Boolean to determine if resulting frame captures should be stored. Defaults to True.
+        save_path (Path | str | None, optional): Directory to save results to. Defaults to None.
 
     Raises:
         ValueError: Check on appending frame captures. If signal is not long enough, or no strobe signal is present, error will be raised.
@@ -99,14 +99,17 @@ def detect_camera_on(signal, fs, directory:str, detection_settings:dict, save_ev
         raise ValueError("frame_rows is empty; no frames were identified")
     frame_map = pd.concat(frame_rows, ignore_index=True)
 
-    if save_events:
-        events_directory = directory+'/events'
-        check_and_make_directory(events_directory) # check that directory exists, if not then create it
-        frame_map.to_csv(events_directory+"/video_alignment.csv", index=False)
+    if save_path:
+        save_path = Path(save_path)
+        #events_directory = directory+'/events'
+        save_path.mkdir(parents=True, exist_ok=True)
+        file_path = save_path / 'video_alignment.csv'
+        #check_and_make_directory(events_directory) # check that directory exists, if not then create it
+        frame_map.to_csv(file_path, index=False)
 
     return bouts, envelope, frame_captures, frame_map
 
-def get_camera_events(directory: str, camera_cfg_file: str):
+def get_camera_events(directory: str, camera_cfg_file: str, save_path: Path | str | None = None):
     """High-level call for getting frame times (camera events) from an ephys recording. Requires strobe method to be used for tracking frame captures on an analog channel.
 
     Args:
@@ -137,37 +140,48 @@ def get_camera_events(directory: str, camera_cfg_file: str):
     event_data = continuous.samples[:,event_channel]
     ts = continuous.sample_numbers/sample_rate
 
-    bouts, envelope, frame_captures, frame_map = detect_camera_on(event_data, sample_rate, directory, detection_settings)
+    bouts, envelope, frame_captures, frame_map = detect_camera_on(event_data, sample_rate, detection_settings, save_path)
 
     return event_data, ts, bouts, frame_captures, continuous
 
-def align_movements_to_ephys(directory: str, movement_events: list = ['start', 'end', 'max'], fs: float = 30000., fps: float = 200.): # frame_captures_df, movements_df, pose_df,
+def align_movements_to_ephys(dirs: list, fs: float = 30000., fps: float = 200., save_path: Path | str | None = None): # frame_captures_df, movements_df, pose_df,  movement_events: list = ['start', 'end', 'max'],
     """Aligns movement events to ephys timestamps and saves results in `pose/events` folder.
 
     Args:
-        directory (str): Root directory of ephys data
-        movement_events (list, optional): List of movement events. Defaults to ['start', 'end', 'max'].
+        dirs (list): List of directory strings containing `movement_events_.pkl` and `pose_data.csv` ['dir/with/movement_events', 'dir/with/pose_data']
         fs (float, optional): Sampling rate of ephys acquisition. Defaults to 30000..
         fps (float, optional): Frame rate of camera. Defaults to 200..
+        save_path (Path | str | None, optional): Directory to save results to. Defaults to None.
+
 
     Returns:
         records_df (pd.DataFrame): Dataframe containing times of movement events translated to ephys samples/timestamps
     """
     
     # create paths
-    movement_df_path = Path(directory) / 'pose' / 'movement_events.pkl'
-    pose_df_path = Path(directory) / 'pose' / 'pose_data.csv'
+    if len(dirs) == 1:
+        movement_df_path = Path(dirs[0]) / 'movement_events.pkl'
+        pose_df_path = Path(dirs[0]) / 'pose_data.csv'
+    else:
+        movement_df_path = Path(dirs[0]) / 'movement_events.pkl'
+        pose_df_path = Path(dirs[1]) / 'pose_data.csv'
     frame_captures_df_path = Path(directory) / 'events' / 'video_alignment.csv'
-    event_alignment_df_path = Path(directory) / 'events' / 'movement_event_alignment.csv'
+    #event_alignment_df_path = Path(save_path) / 'events'
+    #event_alignment_df_path.mkdir(parents=True, exist_ok=True)
+    event_alignment_df_path = Path(save_path) / 'movement_event_alignment.csv'
+    #event_alignment_df_path = Path(directory) / 'events' / 'movement_event_alignment.csv'
     
     # load into dataframes
     movements_df = load_pickle(movement_df_path, method='pandas')
     pose_df = load_csv(pose_df_path, pkg_format='pandas')
     frame_captures_df = load_csv(frame_captures_df_path, pkg_format='pandas')
 
+    # create vars
+    movement_events = list(movements_df.index.unique())
     trials_array = movements_df['trial'].unique()
     nodes = movements_df.keys().drop(['date', 'trial'])
     #resolve_id = lambda x, y: x[np.argmin(np.abs(x-y))]
+
     records = []
     for t in trials_array:
         frames_in_trial = frame_captures_df.query('video_index==@t')['sample_index'].values

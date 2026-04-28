@@ -18,7 +18,7 @@ def test_video_alignment():
     cfg = load_config('camera_alignment_test_cfg.yaml', config_type='multimodal')
     detection_settings = cfg['detection_settings']
     # no saving data, hence 'placeholder' string
-    _, _, frame_captures, _ = detect_camera_on(signal_pad, sample_rate, '', detection_settings, save_events=False)
+    _, _, frame_captures, _ = detect_camera_on(signal_pad, sample_rate, detection_settings, save_path=None)
     
     assert len(frame_captures) == 1 # only one "video" recording should have been identified
     assert len(frame_captures[0]) == 3 # only three frame captures should have been identified
