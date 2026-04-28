@@ -65,7 +65,7 @@ class PoseProcessed:
             data = load_csv(self.pose_output_path, pkg_format=pkg_format)
             return data
         
-    def load_movement(self, pkg_format: str = 'pandas'):
+    def load_movement(self, method: str = 'pandas'):
         """Load movement event data into dataframe using neurokinematics.io.load_pickle
 
         Args:
@@ -75,5 +75,5 @@ class PoseProcessed:
             data (dataframe): Dataframe containing extracted movement events.
         """
         if type(self.movement_output_path) == pathlib.WindowsPath:
-            data = load_pickle(self.movement_output_path, pkg_format)
+            data = load_pickle(self.movement_output_path, method)
             return data

@@ -161,7 +161,7 @@ def align_movements_to_ephys(directory: str, movement_events: list = ['start', '
     event_alignment_df_path = Path(directory) / 'events' / 'movement_event_alignment.csv'
     
     # load into dataframes
-    movements_df = load_pickle(movement_df_path, pkg_format='pandas')
+    movements_df = load_pickle(movement_df_path, method='pandas')
     pose_df = load_csv(pose_df_path, pkg_format='pandas')
     frame_captures_df = load_csv(frame_captures_df_path, pkg_format='pandas')
 
