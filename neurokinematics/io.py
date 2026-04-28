@@ -2,13 +2,14 @@
 High-level I/O for saving and loading.
 
 Contains simplified versions of storage operations to reduce overhead across code. 
-Keep this module to saveas/load of file various file formats.
+Keep this module to saveas/load of file various file formats, set config paths, and session directories.
 
-saveas
+
+saveing
 - json
 - pandas dataframe -> csv
 
-load
+loading
 - json
 - zarr
 - memmap
@@ -24,9 +25,9 @@ import pandas as pd
 import dask.dataframe as dd
 import yaml
 
-###
-### CONFIG PATHS
-###
+
+
+### * configs * ###
 
 CFG_ROOT_PATH = Path(__file__).resolve().parent.parent / 'configs'
 
@@ -37,11 +38,20 @@ CFG_PATHS = {
     'spksorting': CFG_ROOT_PATH / 'spk_sorting_cfg'
 }
 
-###
-### DIRECTORY
-###
 
-def create_session_dirs(session_dir, output_dir_name='neurokinematics_store'):
+
+### * directory * ###
+
+def create_session_dirs(session_dir: str | Path, output_dir_name: str | Path ='neurokinematics'):
+    """Create session directory folders.
+
+    Args:
+        session_dir (str | Path): Path to store session data/plots
+        output_dir_name (str | Path, optional): . Defaults to 'neurokinematics'.
+
+    Returns:
+        dirs (dict): Dictionary of created directories with keys: 'root', 'pose', 'ephys', 'alignment', 'events', 'spikes', 'lfp', 'plots'
+    """
     session_dir = Path(session_dir)
     output_dir = session_dir / output_dir_name
 
@@ -49,6 +59,8 @@ def create_session_dirs(session_dir, output_dir_name='neurokinematics_store'):
         "root": output_dir,
         "pose": output_dir / 'pose',
         "ephys": output_dir / 'ephys',
+        "alignment": output_dir / 'alignment',
+        'events': output_dir / 'events',
         "spikes": output_dir / 'ephys' / 'spikes',
         "lfp": output_dir / 'ephys' / 'lfp',
         "plots": output_dir / 'plots'
@@ -60,9 +72,8 @@ def create_session_dirs(session_dir, output_dir_name='neurokinematics_store'):
     return dirs
 
 
-###
-### SAVING
-###
+
+### * saving files * ###
 
 def saveas_json(file_path: str, data: dict):
     """Save dictionary to json file.
@@ -93,9 +104,9 @@ def save_dataframe(df, file_path, storage_format:str = 'csv', **kwargs):
     elif storage_format == 'parquet':
         df.to_parquet(file_path, **kwargs)
 
-###
-### LOADING...
-###
+
+
+### * loading files * ###
 
 def load_csv(file_path: str, pkg_format: str = 'pandas'):
     """Load csv files.
