@@ -5,15 +5,14 @@ Provides a lightweight abstraction layer over spikeinterface plotting tools alon
 """
 
 from pathlib import Path
+import math
+
 import matplotlib.pyplot as plt
-#from spikeinterface.sorters import run_sorter
-#from spikeinterface import create_sorting_analyzer
-#from spikeinterface.exporters import export_to_phy
-#from spikeinterface.extractors import read_phy
-#from spikeinterface.core import load_sorting_analyzer
+import numpy as np
+import pandas as pd
+
 import spikeinterface.widgets as sw
 from neurokinematics.ephys.io import *
-#from neurokinematics.ephys.utils import create_probe
 from neurokinematics.pose.utils import pixels_to_cm # REMOVE
 from scipy.ndimage import gaussian_filter1d
 
@@ -75,31 +74,61 @@ def plot_autocorrelogram(sorter, unit_ids: list, save_fig: bool = False):
     plt.show()
     #return w
 
-def plot_movement_psth(alignment, sorter, unit_ids: list, movement_plot_params: dict):
+def plot_movement_psth(alignment, sorter, unit_ids: list, movement_plot_params: dict, save_fig = False):
     # lazy correction if plotting one unit
     if not isinstance(unit_ids,list):
         unit_ids = [unit_ids]
+    
     pre_event = movement_plot_params['pre_event']
     post_event = movement_plot_params['post_event']
     node = movement_plot_params['node']
     movement_event = movement_plot_params['movement_event']
-    aligned_movements = alignment.query("node==@node & movement_event==@movement_event")['event_times_ts'].values
+    mpl_cmap = movement_event['cmap']
 
-    no_plots = len(unit_ids)
-    fig, ax = plt.subplots(nrows=no_plots)
+    aligned_movements = alignment.query("node==@node & movement_event==@movement_event")['event_times_ts'].values
+    n = len(unit_ids)
+    ncols = min(5, n)
+    nrows = math.ceil(n / 5)
+    cmap = plt.get_cmap(mpl_cmap, n)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
+    axes = np.array(axes).reshape(nrows,ncols)
     aligned_spike_times = []
     for uid in unit_ids:
         spike_times = sorter.get_unit_spike_train_in_seconds(unit_id=uid)
+        spike_rasters = []
         for am in aligned_movements:
             spikes_in_window = spike_times[(spike_times>(am-pre_event)) & (spike_times <=(am+post_event))]
-            aligned_spike_times.append(spikes_in_window - am)
-    for i, x in enumerate(aligned_spike_times):
-        ax.vlines(x, i+0, i+1, color='black', lw=1)
-    ax.axvline(0.0, linestyle='--', color='red', linewidth=0.75, alpha=0.5)
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Trial id')
-    ax.set_title(f'Spike raster unit {unit_ids} - {node} {movement_event}')
+            spike_rasters.append(spikes_in_window - am)
+        aligned_spike_times.append({
+            "unit_id": uid,
+            "movement_event": movement_event,
+            "node": node,
+            "spike_rasters": spike_rasters
+        })
+    for i, raster_data in enumerate(aligned_spike_times):
+        raster = raster_data['spike_rasters']
+        row = i // ncols
+        col = i % ncols
+        ax = axes[row, col]
+        for ii, spks in enumerate(raster):
+            ax.vlines(spks, ii+0, ii+1, color=cmap(i), lw=1)
+        ax.axvline(0.0, linestyle='--', color='red', linewidth=0.75, alpha=0.5)
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Trial')
+        ax.set_title(f"Unit id: {raster_data['unit_id']}")
+    for j in range(n, nrows*ncols):
+        row = j // ncols
+        col = j % ncols
+        axes[row, col].axis('off')
+
+    plt.suptitle(f'Spike rasters: {node} {movement_event} movement')
     plt.tight_layout()
+    if save_fig:
+        plots_dir = Path(sorter.get_annotation('phy_folder')).parent.parent / 'unit_plots'
+        plots_dir.mkdir(exist_ok=True)
+        plot_path = plots_dir / f'{node}_{movement_event}_rasters.png'
+        plt.savefig(plot_path.as_posix()) # save figure to analyzer path
+
     plt.show()
     return aligned_spike_times
 # for ii in range(len(frame_captures)):
