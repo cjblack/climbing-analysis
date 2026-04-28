@@ -31,7 +31,7 @@ conda env create -f environment_redux.yml
 ### [`spikes`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/ephys/spikes)
 Currently tested with data acquired from Cambridge Neurotech H5 probe using the Open Ephys acquisition system, and spikesorting with kilosort4.
 
-#### Running spike sorting
+#### Run spike sorting
 This subpackage uses `spikeinterface` to perform spike sorting and some plotting. 
 
 Spike sorting with neurokinematics requires simply the directory to an ephys recording and a [spike sorting config file](https://github.com/cjblack/neurokinematics/tree/main/configs/spk_sorting_cfg). The config will need to be updated and tested depending on your probe/acquisition system.
@@ -42,9 +42,10 @@ from neurokinematics.ephys.spikes.sorting import sort
 # Set data directory and param file
 data_path = 'path/to/.oebin'
 cfg_file = 'cfgfile.yaml' # located in 'configs/spike_cfg'
+save_path = 'path/to/savefolder' # set to desired save location, default will store to data_path directory
 
 # Sort spikes
-sorting, recording, probe, analyzer = sort(data_path=data_path, cfg_file=cfg_file)
+sorting, recording, probe, analyzer = sort(data_path=data_path, cfg_file=cfg_file, save_path=save_path)
 ```
 
 Data can then be viewed with phy2.
@@ -58,7 +59,7 @@ Custom pre-processing of raw lfp traces
 from neurokinematics.ephys.lfp.preprocessing import preprocess_lfp
 
 data_path = 'path/to/datafolder' # set data_path to point to recording root directory
-save_path = 'path/to/savefolder' # set save path to location to save, default will store to recording directory in data_path
+save_path = 'path/to/savefolder' # set to desired save location, default will store to data_path directory
 node_idx = 0 # for open ephys binary, indicates the index of the record node
 rec_idx = 0 # for open ephys binary, indicates the index of the recording
 
