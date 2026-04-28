@@ -80,13 +80,16 @@ movement_plot_params =
     'post_event': 0.5,
     'node': 'r_hindpaw',
     'movement_event': 'end',
-    'cmap': 'default'
+    'cmap': 'winter'
+    'bin_size': 0.05
     }
 
-plot_movement_psth(raster_df, unit_ids, movement_plot_params)
+plot_movement_psth(raster_df, unit_ids, movement_plot_params) # plot with respect to end of movement
+movement_plot_params['movement_event'] = 'max'
+plot_movement_psth(raster_df, unit_ids, movement_plot_params) # plot with respect to maximum velocity of movement
 ```
 
-![Example rasters](docs/example_psth.png)
+![Example rasters](docs/r_hindpaw_end_3_units_psth.png) ![Example rasters](docs/r_hindpaw_max_3_units_psth.png)
 
 ### [`lfp`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/ephys/lfp)
 Custom pre-processing of raw lfp traces
