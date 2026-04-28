@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from neurokinematics.io import save_dataframe
+from neurokinematics.data.processed import SpikeRasterProcessed
 
 def get_movement_aligned_rasters(alignment: pd.DataFrame, sorter, storage_format: str | None = None):
     """Computes, and optionally saves movement aligned spike rasters.
@@ -74,15 +75,40 @@ def get_movement_aligned_rasters(alignment: pd.DataFrame, sorter, storage_format
         data_dir = Path(sorter.get_annotation('phy_folder')).parent.parent / 'rasters'
         data_dir.mkdir(exist_ok=True)
         if storage_format == "pickle":
-            save_dataframe(raster_df, data_dir / 'movement_aligned_rasters.pkl', storage_format='pickle')
+            output_path = data_dir / 'movement_aligned_rasters.pkl'
+            save_dataframe(raster_df, output_path, storage_format='pickle')
+            spike_raster_proc_obj = SpikeRasterProcessed(
+                unit_ids = unit_ids,
+                nodes = nodes,
+                event_types = movement_events,
+                output_path = output_path,
+                storage_format=storage_format
+            )
+
         elif storage_format == 'parquet':
             # not fully tested - spike rasters are ragged, np.arrays, parquet might not like this.
+            output_path = data_dir / 'movement_aligned_rasters'
             save_dataframe(
                 raster_df,
-                data_dir / 'movement_aligned_rasters',
+                output_path,
                 partition_cols=['trial']
                 )
+            spike_raster_proc_obj = SpikeRasterProcessed(
+                unit_ids = unit_ids,
+                nodes = nodes,
+                event_types = movement_events,
+                output_path = output_path,
+                storage_format=storage_format,
+                partition_cols = ['trial'],
+            )
         else:
             raise ValueError("storage_format must be 'pkl', 'parquet' or None.")
+    else:
     
-    return raster_df
+        spike_raster_proc_obj = SpikeRasterProcessed(
+            unit_ids = unit_ids,
+            nodes = nodes,
+            event_types = movement_events,
+        )
+    
+    return spike_raster_proc_obj

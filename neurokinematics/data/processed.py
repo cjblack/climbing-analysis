@@ -60,12 +60,14 @@ class SpikeRasterProcessed:
     storage_format: Optional[str] = None
     partition_cols: Optional[list] = None
     
-    def load(self, method: str = 'pickle', **kwargs):
+    def load(self):
         if type(self.output_path) == pathlib.WindowsPath:
-            if method == 'pickle':
-                data = load_pickle(self.output_path, method=method)
-            if method == 'parquet':
-                data = pd.read_parquet(self.output_path, **kwargs)
+            if self.storage_format == 'pickle':
+                data = load_pickle(self.output_path, method='pandas')
+                return data
+            if self.storage_format == 'parquet':
+                data = pd.read_parquet(self.output_path, partition_cols = self.partition_cols)
+                return data
         
 @dataclass
 class PoseProcessed:
