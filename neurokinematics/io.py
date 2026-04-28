@@ -38,6 +38,29 @@ CFG_PATHS = {
 }
 
 ###
+### DIRECTORY
+###
+
+def create_session_dirs(session_dir, output_dir_name='neurokinematics_store'):
+    session_dir = Path(session_dir)
+    output_dir = session_dir / output_dir_name
+
+    dirs = {
+        "root": output_dir,
+        "pose": output_dir / 'pose',
+        "ephys": output_dir / 'ephys',
+        "spikes": output_dir / 'ephys' / 'spikes',
+        "lfp": output_dir / 'ephys' / 'lfp',
+        "plots": output_dir / 'plots'
+    }
+
+    for path in dirs.values():
+        path.mkdir(parents=True, exist_ok=True)
+    
+    return dirs
+
+
+###
 ### SAVING
 ###
 
