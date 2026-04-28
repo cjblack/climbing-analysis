@@ -34,7 +34,7 @@ Currently tested with data acquired from Cambridge Neurotech H5 probe using the 
 #### Running spike sorting
 This subpackage uses `spikeinterface` to perform spike sorting and some plotting. 
 
-Spike sorting with neurokinematics requires simply the directory to an ephys recording and a [spike sorting config file](). The config will need to be updated and tested depending on your probe/acquisition system.
+Spike sorting with neurokinematics requires simply the directory to an ephys recording and a [spike sorting config file](https://github.com/cjblack/neurokinematics/tree/main/configs/spk_sorting_cfg). The config will need to be updated and tested depending on your probe/acquisition system.
 
 ```python
 from neurokinematics.ephys.spikes.sorting import sort
@@ -55,12 +55,15 @@ Data can then be viewed with phy2.
 Custom pre-processing of raw lfp traces
 
 ```python
-from neurokinematics.ephys.lfp import process_lfp
+from neurokinematics.ephys.lfp.preprocessing import preprocess_lfp
 
-data_path = 'path/to/datafolder'
+data_path = 'path/to/datafolder' # set data_path to point to recording root directory
+save_path = 'path/to/savefolder' # set save path to location to save, default will store to recording directory in data_path
+node_idx = 0 # for open ephys binary, indicates the index of the record node
+rec_idx = 0 # for open ephys binary, indicates the index of the recording
 
 # chunk, filter, and downsample
-process_lfp(data_path)
+lfp_proc_obj = preprocess_lfp(data_path, node_idx=node_idx, rec_idx=rec_idx, save_path = save_path) # returns lightweight dataclass object
 ```
 
 ### [`multimodal`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/multi_modal)
