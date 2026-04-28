@@ -25,7 +25,7 @@ def plot_waveforms(analyzer, unit_ids: list, max_spikes: int = 100, save_path: P
         analyzer (SortingAnalyzer): Spike sorting analyzer from spikeinterface, can either be used from running the sort function or loading directly from a save.
         unit_ids (list): List of unit ids to plot.
         max_spikes (int, optional): Maximum number of single spike waveforms to plot, best to set this number low, especially when plotting multiple units. Defaults to 100.
-        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to False.
+        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
     """
     
     # lazy correction if plotting one unit
@@ -52,7 +52,7 @@ def plot_autocorrelogram(sorter, unit_ids: list, save_path: Path | None = None):
     Args:
         sorter (SortingExtractor): Spikeinterface Sorting Extractor object. Get from either running sort, or loading from previous sorting.
         unit_ids (list): List of unit ids to plot.
-        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to False.
+        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
     """
     
     # lazy correction if plotting one unit
@@ -87,7 +87,7 @@ def plot_movement_psth(rasters_df: pd.DataFrame, unit_ids: list, movement_plot_p
         
             Defaults to None, which defaults to plotting rasters with respect to the first rows node and event type, in black.
 
-        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to False.
+        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
     """
     # lazy correction if plotting one unit
     if not isinstance(unit_ids,list):
