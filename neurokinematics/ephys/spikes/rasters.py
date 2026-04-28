@@ -13,16 +13,17 @@ import pandas as pd
 from neurokinematics.io import save_dataframe
 from neurokinematics.data.processed import SpikeRasterProcessed
 
-def get_movement_aligned_rasters(alignment: pd.DataFrame, sorter, storage_format: str | None = None):
+def get_movement_aligned_rasters(alignment: pd.DataFrame, sorter, save_path: Path | str, storage_format: str = 'pickle'):
     """Computes, and optionally saves movement aligned spike rasters.
 
     Args:
         alignment (pd.DataFrame): Dataframe created from events/movement_event_alignment.csv
         sorter (SortingExtractor): Spikeinterface sorting extractor object
-        storage_format (str | None, optional): Format to store raster dataframe as. Options are 'pickle', 'parquet', and None. Storing with 'parquet' may yield issues, if so, switch to 'pickle'. Defaults to None.
+        save_path (Path | str):
+        storage_format (str, optional): Format to store raster dataframe as. Options are 'pickle', 'parquet'. Storing with 'parquet' may yield issues, if so, switch to 'pickle'. Defaults to 'pickle'.
 
     Returns:
-        _type_: _description_
+        spike_raster_proc_obj (dataclass): Lightweight dataclass containing metadata for movement aligned rasters
     """
     # extract alignment information for creating data frame
     movement_events = alignment['movement_event'].unique() # get unique movement event types - this may differ across analyses
@@ -69,46 +70,39 @@ def get_movement_aligned_rasters(alignment: pd.DataFrame, sorter, storage_format
 
     raster_df = pd.DataFrame.from_records(aligned_spike_times) # create dataframe from aligned spike times list
 
-    # if saving data...
-    if storage_format:
-        # make dir
-        data_dir = Path(sorter.get_annotation('phy_folder')).parent.parent / 'rasters'
-        data_dir.mkdir(exist_ok=True)
-        if storage_format == "pickle":
-            output_path = data_dir / 'movement_aligned_rasters.pkl'
-            save_dataframe(raster_df, output_path, storage_format='pickle')
-            spike_raster_proc_obj = SpikeRasterProcessed(
-                unit_ids = unit_ids,
-                nodes = nodes,
-                event_types = movement_events,
-                output_path = output_path,
-                storage_format=storage_format
-            )
 
-        elif storage_format == 'parquet':
-            # not fully tested - spike rasters are ragged, np.arrays, parquet might not like this.
-            output_path = data_dir / 'movement_aligned_rasters'
-            save_dataframe(
-                raster_df,
-                output_path,
-                partition_cols=['trial']
-                )
-            spike_raster_proc_obj = SpikeRasterProcessed(
-                unit_ids = unit_ids,
-                nodes = nodes,
-                event_types = movement_events,
-                output_path = output_path,
-                storage_format=storage_format,
-                partition_cols = ['trial'],
-            )
-        else:
-            raise ValueError("storage_format must be 'pkl', 'parquet' or None.")
-    else:
-    
+    # make dir
+    data_dir = Path(save_path) / 'rasters' #Path(sorter.get_annotation('phy_folder')).parent.parent / 'rasters'
+    data_dir.mkdir(parents=True, exist_ok=True)
+    if storage_format == "pickle":
+        output_path = data_dir / 'movement_aligned_rasters.pkl'
+        save_dataframe(raster_df, output_path, storage_format='pickle')
         spike_raster_proc_obj = SpikeRasterProcessed(
             unit_ids = unit_ids,
             nodes = nodes,
             event_types = movement_events,
+            output_path = output_path,
+            storage_format=storage_format
         )
+
+    elif storage_format == 'parquet':
+        # not fully tested - spike rasters are ragged, np.arrays, parquet might not like this.
+        output_path = data_dir / 'movement_aligned_rasters'
+        save_dataframe(
+            raster_df,
+            output_path,
+            partition_cols=['trial']
+            )
+        spike_raster_proc_obj = SpikeRasterProcessed(
+            unit_ids = unit_ids,
+            nodes = nodes,
+            event_types = movement_events,
+            output_path = output_path,
+            storage_format=storage_format,
+            partition_cols = ['trial'],
+        )
+    else:
+        raise ValueError("storage_format must be 'pkl', 'parquet'.")
+
     
     return spike_raster_proc_obj
