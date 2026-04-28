@@ -23,11 +23,13 @@ from neurokinematics.ephys.lfp.filters import filter_lfp
 from scipy.signal import resample_poly
 
 
-def preprocess_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_duration_s=1.0, n_aux_chans = 11, filter_info={"n_": 50.0, "bp_":(0.1,100.0), "quality": 30.0}, dtype="float32", storage_format="zarr"):
+def preprocess_lfp(data_path: Path, node_idx: int = 0, rec_idx: int = 0, fs_new=1000.0, chunk_duration_s=10.0, pad_duration_s=1.0, filter_info={"n_": 50.0, "bp_":(0.1,100.0), "quality": 30.0}, dtype="float32", save_path: Path | str | None = None, storage_format="zarr"):
     """Performs basic pre-processing of LFP data from .continuous recordings. Chunks, filters, and downsamples data to be stored as a memmap for later access.
 
     Args:
         data_path (Path): Folder path of recorded data
+        node_idx (int): Index of record node used in open ephys recording
+        rec_idx (int): Index of recording idx used in open ephys recording
         fs_new (float, optional): Sampling rate to downsample to. Defaults to 1000.0.
         chunk_duration_s (float, optional): Duration in seconds of data chunks. Defaults to 10.0.
         pad_duration_s (float, optional): Duration in seconds for data padding - for filtering. Defaults to 1.0.
@@ -45,10 +47,14 @@ def preprocess_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_du
 
     # create path vars
     data_path = Path(data_path)
-    lfp_data, rec_dir = get_continuous(data_path = data_path, node_idx=0, rec_idx=0) # node_idx and rec_node are hard coded
-    rec_dir = Path(rec_dir) # convert to Path obj
-    metadata_path = rec_dir / 'lfp_metadata.json'
-    chunkmap_path = rec_dir / 'lfp_chunk_map.csv'
+    lfp_data, rec_dir = get_continuous(data_path = data_path, node_idx=node_idx, rec_idx=rec_idx) # node_idx and rec_node are hard coded
+    if save_path:
+        save_path = Path(save_path)
+        save_path.mkdir(exist_ok=True)
+    else:
+        save_path = Path(rec_dir) # convert to Path obj
+    metadata_path = save_path / 'lfp_metadata.json'
+    chunkmap_path = save_path / 'lfp_chunk_map.csv'
     
     # create data vars
     fs_og = lfp_data.metadata.sample_rate 
@@ -64,7 +70,7 @@ def preprocess_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_du
     # setup data storage
     ## memmap
     if storage_format == 'memmap':
-        output_path = rec_dir / 'lfp_downsampled.dat'
+        output_path = save_path / 'lfp_preprocessed.dat'
 
         lfp_metadata = dict({
         "data_loc_original": str(data_path.as_posix()),
@@ -91,7 +97,7 @@ def preprocess_lfp(data_path: Path, fs_new=1000.0, chunk_duration_s=10.0, pad_du
     
     ## zarr
     elif storage_format == 'zarr':
-        output_path = rec_dir / 'lfp'
+        output_path = save_path / 'lfp_preprocessed'
 
         lfp_metadata = dict({
         "data_loc_original": str(data_path.as_posix()),
