@@ -39,7 +39,7 @@ def plot_waveforms(analyzer, unit_ids: list, max_spikes: int = 100, save_path: P
 
     if save_path:
         plots_dir = Path(save_path) / 'unit_plots'
-        plots_dir.mkdir(parent=True, exist_ok=True)
+        plots_dir.mkdir(parents=True, exist_ok=True)
         plot_path = plots_dir / 'unit_waveforms.png'
         plt.savefig(plot_path.as_posix()) # save figure to analyzer path
 
@@ -66,7 +66,7 @@ def plot_autocorrelogram(sorter, unit_ids: list, save_path: Path | None = None):
 
     if save_path:
         plots_dir = Path(save_path) / 'unit_plots'#Path(sorter.get_annotation('phy_folder')).parent.parent / 'unit_plots'
-        plots_dir.mkdir(parent=True, exist_ok=True)
+        plots_dir.mkdir(parents=True, exist_ok=True)
         plot_path = plots_dir / 'unit_autocorrelograms.png'
         plt.savefig(plot_path.as_posix()) # save figure to analyzer path
 
@@ -138,7 +138,7 @@ def plot_movement_psth(rasters_df: pd.DataFrame, unit_ids: list, movement_plot_p
     plt.tight_layout()
     if save_path:
         plots_dir = Path(save_path) / 'unit_plots'
-        plots_dir.mkdir(parent=True, exist_ok=True)
+        plots_dir.mkdir(parents=True, exist_ok=True)
         plot_path = plots_dir / f'{node}_{movement_event}_{n}_units_psth.png'
         plt.savefig(plot_path.as_posix()) # save figure to analyzer path
 
