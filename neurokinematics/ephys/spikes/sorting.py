@@ -10,7 +10,7 @@ from spikeinterface.sorters import run_sorter
 from neurokinematics.ephys.io import *
 from neurokinematics.ephys.utils import create_probe
 
-def sort(data_path: str, cfg_file:str): 
+def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None): 
     """Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe.
     Consequently, this has only been tested with the default parameters. More tests are required for other recording setups.
 
@@ -18,6 +18,8 @@ def sort(data_path: str, cfg_file:str):
     Args:
         data_path (str): Directory path containing '.oebin' file.
         cfg_file (str): Config file name ending in '.yaml'. This config file must be stored in the projects root directory under 'configs/spike_cfg'.
+        save_path (Path | str | None, optional): Specifies folder to store results. None will default to storing results in location of the recording folder in the data_path. Defaults to None.
+
 
     Returns:
         sorting: Spikeinterface sorting object.
@@ -30,7 +32,7 @@ def sort(data_path: str, cfg_file:str):
     """
     # Load sorting params
     sorting_cfg = get_sorting_cfg(cfg_file)
-
+    
     rec_type = sorting_cfg['rec_type']
     sorter = sorting_cfg['sorter']
     probe_id = sorting_cfg['probe_id']
@@ -41,9 +43,16 @@ def sort(data_path: str, cfg_file:str):
     to_compute = sorting_cfg['to_compute']
     
     data_path = Path(data_path) # windows path
-    output_folder = data_path / sorter # set output folder for kilosort
-    recording_path = data_path / f'{sorter}/recording.dat'
-    phy_folder = data_path / f'{sorter}/phy_output'
+    if save_path:
+        save_path = Path(save_path)
+        output_folder = save_path / sorter # when spikeinterface runs kilosort4, this folder will be created
+        recording_path = save_path / sorter / 'recording.dat'
+        phy_folder = save_path / sorter / 'phy_output'
+    else:
+        save_path = Path(data_path)
+        output_folder = save_path / sorter # set output folder for kilosort
+        recording_path = save_path / sorter / 'recording.dat'
+        phy_folder = save_path / sorter / 'phy_output'
 
     recording = read_data(data_path=Path(data_path), rec_type=rec_type, stream_name=stream_name)
     probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
