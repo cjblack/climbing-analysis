@@ -9,7 +9,15 @@ import pathlib
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+import pandas as pd
+
 from neurokinematics.io import load_zarr, load_memmap, load_json, load_csv, load_pickle
+
+###
+### For ephys
+###
+
 
 @dataclass
 class LFPProcessed:
@@ -41,6 +49,23 @@ class LFPProcessed:
             if return_metadata:
                 return data, metadata
             return data
+        
+@dataclass
+class SpikeRasterProcessed:
+
+    unit_ids: np.ndarray
+    nodes: np.ndarray
+    event_types: np.ndarray
+    output_path: Optional[Path] = None
+    storage_format: Optional[str] = None
+    partition_cols: Optional[list] = None
+    
+    def load(self, method: str = 'pickle', **kwargs):
+        if type(self.output_path) == pathlib.WindowsPath:
+            if method == 'pickle':
+                data = load_pickle(self.output_path, method=method)
+            if method == 'parquet':
+                data = pd.read_parquet(self.output_path, **kwargs)
         
 @dataclass
 class PoseProcessed:
