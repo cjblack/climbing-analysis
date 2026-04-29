@@ -55,7 +55,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     data_path = Path(data_path)
     if save_path:
         # create save_path folder if provided
-        pose_path = Path(save_path) / 'pose'
+        pose_path = Path(save_path) #/ 'pose'
         pose_path.mkdir(parents=True, exist_ok=True)
     else:
         # if no save_path provided create folder in data_path
