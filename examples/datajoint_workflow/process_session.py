@@ -5,7 +5,7 @@ from datetime import datetime
 import argparse
 
 from dj_config import connect
-from neurokinematics.schema import (
+from schema import (
     Subject,
     Session,
     EphysRecordNode,

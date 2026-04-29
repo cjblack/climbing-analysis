@@ -34,5 +34,5 @@ neurokinematics/models/
 aws/
 
 # datajoint
-neurokinematics/schema.py
-dj_config.py
+#neurokinematics/schema.py
+#dj_config.py

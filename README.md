@@ -238,12 +238,27 @@ data_path = 'path/to/ephys/data/folder'
 csession = ClimbingSession(data_path)
 ```
 
+## Scope and current support
+
+This package has been developed and tested primarily on a specific experimental setup:
+- SLEAP-based pose estimation
+- Open Ephys acquisition system
+- Cambridge Neurotech probes (specifically 64-channel H5 probes)
+
+The core components are designed to be modular and extensible with the goal of supporting a wider range of data formats and recording systems.
+
+At present, some assumptions about input structure (e.g. alignment data, config formats) reflect the original datasets used in development. These are documented in the relevant modules and can be adapted with minimal changes.
+
+Future work will focus on generalising input interfaces and expanding format support including:
+- Pose packages (e.g. DLC, Anipose)
+- Ephys acquisition systems
+- Probes (e.g. Neuropixels, Neuralynx)
 
 ## In development 
 ### [`workflows`](https://github.com/cjblack/neurokinematics/tree/main/workflows)
-Process workflow ingests recording session into DataJoint pipeline. Does not perform signal processing yet, simply registers and structures data in the database.
+Experimental workflow ingests recording session into DataJoint pipeline. Currently handles registration and data structuring. Signal processing steps are not yet included.
 
-Ensure you have created a .env file with the relevant fields that allows you to link to DB of choice.
+Requires a `.env` file with database connection details.
 
 #### Terminal example
 
