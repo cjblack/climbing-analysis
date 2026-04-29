@@ -131,19 +131,24 @@ plot_movement_psth(raster_df, unit_ids, movement_plot_params) # plot with respec
 ![Example rasters](docs/r_hindpaw_end_3_units_psth.png) ![Example rasters](docs/r_hindpaw_max_3_units_psth.png)
 
 ### [`lfp`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/ephys/lfp)
-Custom pre-processing of raw lfp traces
+### Pre-process raw lfp data from OpenEphys
 
 ```python
 from neurokinematics.ephys.lfp.preprocessing import preprocess_lfp
 
-data_path = 'path/to/datafolder' # set data_path to point to recording root directory
-save_path = 'path/to/savefolder' # set to desired save location, default will store to data_path directory
-node_idx = 0 # for open ephys binary, indicates the index of the record node
-rec_idx = 0 # for open ephys binary, indicates the index of the recording
-
-# chunk, filter, and downsample
-lfp_proc_obj = preprocess_lfp(data_path, node_idx=node_idx, rec_idx=rec_idx, save_path = save_path) # returns lightweight dataclass object
+lfp_proc_obj = preprocess_lfp(
+    data_path = "path/to/ephys", 
+    node_idx = 0, # based on record node id
+    rec_idx = 0, # based on recording folder id
+    save_path = "path/to/outputs"
+    ) 
+lfp, metadata = lfp_proc_obj.load(return_metadata=True) # Load data and metadata
 ```
+This will
+- Load Open Ephys .continuous data (specified by `node_idx` and `rec_idx`).
+- Chunk, downsample, and filter all channels.
+- Store results in a zarr store (default) or memory map.
+- Return lightweight class to examine metadata and load processed lfp data.
 
 ### [`multimodal`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/multi_modal)
 This currently will return, among other things a list of arrays called `frame_captures`. Each list index is the start of a new video, and each value in the array corresponds to the ephys sample that a video frame was captured. This is also saved as a `.csv` file withint the `events` folder in the data directory.
