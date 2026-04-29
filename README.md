@@ -170,7 +170,25 @@ This will
 - Store results in a zarr store (default) or memory map.
 - Return lightweight class to examine metadata and load processed lfp data.
 
-### [`multimodal`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/multi_modal)
+### Epoch lfp data with movement events
+Align continuous lfp data to movements extracted from markerless pose estimation.
+```python
+from neurokinematics.ephys.lfp.epoch import get_movement_aligned_erps
+from neurokinematics.io import load_csv
+alignment_df = load_csv("path/to/movement_event_alignment.csv") # required
+lfp_root = get_movement_aligned_erps(
+    alignment = alignment_df,
+    lfp_data = "path/to/zarr/store",
+    save_path = "path/to/outputs",
+    channel_select = [0,1,2,3,4] # set this according to the ephys channels you want to process
+)
+```
+This will
+- Align lfp data from specified channels from `channel_select` to ephys aligned events in `movement_event_alignment.csv`.
+- Create a zarr store, saving associated metadata and subgroups as `node/movement_event`.
+- Return the root zarr group as `lfp_root`.
+
+### [`multi_modal`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/multi_modal)
 
 ### Align video frames to ephys data using strobe method
 If the camera's strobe ouput is fed to an analog input channel on the ephys acquisition system, the below method can identify the indices where frames were captured.
