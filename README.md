@@ -28,6 +28,27 @@ conda env create -f environment_redux.yml
 
 
 ## Usage
+
+### [`pose`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/pose)
+
+### Process sleap files
+```python
+from neurokinematics.pose.preprocessing.base import process_sleap
+pose = process_sleap(
+    data_path = "path/to/sleap/h5/files",
+    pose_cfg = "simple_pose_cfg.yaml",
+    save_path = "path/to/save/directory # optional
+)
+
+print(pose.pose_output_path)
+```
+This will
+- Load and preprocess all .h5 SLEAP files in the `data_path` based on the config file.
+- Save processed pose data to `pose_data.csv`.
+- Optionally extract and save movement events to `movement_events.pkl` (if enabled in the config file).
+
+If `save_path` is not provided, outputs are written to `pose/` folder inside `data_path`.
+
 ### [`spikes`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/ephys/spikes)
 Currently tested with data acquired from Cambridge Neurotech H5 probe using the Open Ephys acquisition system, and spikesorting with kilosort4.
 
