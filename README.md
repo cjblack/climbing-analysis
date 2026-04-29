@@ -171,16 +171,40 @@ This will
 - Return lightweight class to examine metadata and load processed lfp data.
 
 ### [`multimodal`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/multi_modal)
-This currently will return, among other things a list of arrays called `frame_captures`. Each list index is the start of a new video, and each value in the array corresponds to the ephys sample that a video frame was captured. This is also saved as a `.csv` file withint the `events` folder in the data directory.
+
+### Align video frames to ephys data using strobe method
+If the camera's strobe ouput is fed to an analog input channel on the ephys acquisition system, the below method can identify the indices where frames were captured.
+This has been tested only on FLIR blackfly S camera at 200fps using the Open Ephys acquisition system.
 
 ```python
-from neurokinematics.ephys.events import get_camera_events
+from neurokinematics.multi_modal.alignment import get_camera_events
 
-data_path = 'path/to/datafolder'
-camera_channel = 67
-
-event_data, ts, bouts, frame_captures, _ = get_camera_events(data_path, event_channel = camera_channel)
+event_data, ts, bouts, frame_captures, continuous = get_camera_events(
+    data_path = "path/to/ephys", 
+    camera_cfg_file = "camera_alignment_cfg.yaml",
+    save_path = "path/to/outputs"
+    )
 ```
+This will
+- Identify frame captures times in ephys recording using the analog channel containing strobe data.
+- Store resulting frame captures as `video_alignment.csv`.
+
+### Align movement events to ephys
+```python
+from neurokinematics.multi_modal.alignment import align_movements_to_ephys
+movement_alignment_df = align_movements_to_ephys(
+    dirs = {
+        "events": "path/to/events", # event path contains "movement_events.pkl" - required
+        "pose": "path/to/pose", # pose path contains 'pose_data.csv' - required
+        "alignment": "path/to/alignment" # alignment path contains 'video_alignment.csv' - required
+    },
+    save_path = "path/to/outputs"
+)
+```
+This will
+- Align previously extracted and stored movement event times to ephys indicies.
+- Save resulting alignment as `movement_event_alignment.csv`.
+- Return a dataframe containing the resulting alignments.
 
 ### [`data`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/data)
 
