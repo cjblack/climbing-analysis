@@ -1,8 +1,10 @@
 # Default ignored files
 /shelf/
 /workspace.xml
+
 # Editor-based HTTP Client requests
 /httpRequests/
+
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
@@ -29,6 +31,7 @@ sko109120_baseline_pose.csv
 neurokinematics/state_space_analysis/
 neurokinematics/distributed/
 neurokinematics/models/
+aws/
 
 # datajoint
 neurokinematics/schema.py
