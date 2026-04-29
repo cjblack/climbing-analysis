@@ -35,7 +35,8 @@ CFG_ROOT_PATH = Path(__file__).resolve().parent.parent / 'configs'
 CFG_PATHS = {
     'multimodal': CFG_ROOT_PATH / 'multimodal_cfg',
     'pose': CFG_ROOT_PATH / 'pose_cfg',
-    'spksorting': CFG_ROOT_PATH / 'spk_sorting_cfg'
+    'spksorting': CFG_ROOT_PATH / 'spk_sorting_cfg',
+    'session': CFG_ROOT_PATH / 'session_cfg'
 }
 
 

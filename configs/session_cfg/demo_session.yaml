@@ -1,0 +1,12 @@
+session:
+  type: behaviour
+
+configs:
+  spikes: sample_spike_sorting_cfg.yaml
+  pose: simple_pose_cfg.yaml
+  multi_modal: camera_alignment_cfg.yaml
+
+pipeline:
+  run_pose: true
+  run_spikes: true
+  run_lfp: true
