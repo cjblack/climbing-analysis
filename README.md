@@ -14,17 +14,23 @@
  This code base is designed with the custom climbing behaviour in mind ([Naturalistic climbing reveals adaptive strategies for interlimb coordination in freely moving mice](https://doi.org/10.1016/j.isci.2026.115901)).
 
  ## Quick install
- Clone repository, and create environment:
+
+ Clone repository, and create environment using `environment_cuda.yml`:
+ 
  ```bash
 git clone https://github.com/cjblack/neurokinematics.git
 cd neurokinematics
-conda env create -f environment_redux.yml
+conda env create -f environment_cuda.yml --solver=libmamba
+conda activate neurokinematics_cuda
  ```
 
- For cuda capabilities (recommended if using this package for spike sorting), use the following:
- ```bash
- conda env create -f environment_cuda.yml --solver=libmamba
- ```
+This environment installs PyTorch with CUDA support for GPU accelerated spike-sorting.
+
+### &#x26a0;&#xfe0f; Requirements
+- NVIDIA GPU with CUDA support
+- Compatible drives and CUDA toolkit installed
+
+Tested on **NVIDIA RTX 50 series**.
 
 
 ## Usage
@@ -94,7 +100,7 @@ plot_waveforms(
 ```
 This will
 - First, load the saved `spikeinterface` analyzer object.
-- Plot waveforms of selected unit ids across electrodes.
+- Plot waveforms of selected unit ids across electrodes using `spikeinterface.widget` module.
 - Optionally save the plot as a `.png`.
 
 ![Example waveforms](docs/unit_waveforms.png)
