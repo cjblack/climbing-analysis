@@ -38,8 +38,9 @@ def get_movement_aligned_erps(alignment: pd.DataFrame | Path | str, lfp_data: Pa
         >>> lfp_root = get_movement_aligned_erps(
         ...     alignment = alignment_df,
         ...     lfp_data = "path/to/zarr/store",
+        ...     save_path = "path/to/outputs",
         ...     epoch_window = (0.5, 0.5),
-        ...     channel_select = np.arange(64)
+        ...     channel_select = np.arange(64),
         ... )
     """
     
