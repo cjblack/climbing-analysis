@@ -27,15 +27,14 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     """Preprocess markerless pose data from sleap stored in a single directory.
 
     Args:
-        data_path (str): Path to folder containing sleap `.h5` files
-        pose_cfg (str): Config file stored in `configs/pose_cfg` directory
+        data_path (str): Path to folder containing sleap `.h5` files.
+        pose_cfg (str): Config file stored in `configs/pose_cfg` directory.
         save_path (Path | str | None, optional): Directory to save results to. Defaults to None.
 
     Returns:
-        PoseProcessed: Lightweight class storing metadata for preprocessing steps
+        PoseProcessed: Lightweight class storing metadata for preprocessing steps.
 
     Example:
-        >>> from neurokinematics.pose.preprocessing.base import process_sleap
         >>> pose_proc_obj = process_sleap(
         ...     data_path = "path/to/converted/sleap/files"
         ...     pose_cfg = "simple_pose_cfg.yaml",
