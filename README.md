@@ -58,7 +58,7 @@ Currently tested with data acquired from Cambridge Neurotech H5 probe using the 
 ### Run spike sorting
 This subpackage uses `spikeinterface` to perform spike sorting and some plotting. 
 
-Spike sorting with neurokinematics requires simply the directory to an ephys recording and a [spike sorting config file](https://github.com/cjblack/neurokinematics/tree/main/configs/spk_sorting_cfg). The config will need to be updated and tested depending on your probe/acquisition system.
+Spike sorting with neurokinematics requires the directory to an ephys recording and a [spike sorting config file](https://github.com/cjblack/neurokinematics/tree/main/configs/spk_sorting_cfg). The config will need to be updated and tested depending on your probe/acquisition system.
 
 ```python
 from neurokinematics.ephys.spikes.sorting import sort
@@ -74,34 +74,52 @@ sorting, recording, probe, analyzer = sort(data_path=data_path, cfg_file=cfg_fil
 
 Data can then be viewed with phy2.
 
-### Plotting spike data
-Neurokinematics can use the spikeinterface objects stored during spike sorting, along with some of spikeinterfaces widgets for plotting.
+### Plotting spike waveforms
+Neurokinematics can use the `spikeinterface` results stored during spike sorting for plotting.
 
 ```python
 from neurokinematics.ephys.io import load_analyzer
 from neurokinematics.ephys.spikes.plotting import plot_waveforms
 
+# Load spikeinterface sorting analyzer
 analyzer_path = 'path/to/analyzer/folder'
-plots_path = 'path/to/save/plots'
 analyzer = load_analyzer(analyzer_path)
-unit_ids = [12, 16, 17]
-plot_waveforms(analyzer, unit_ids, save_path = plots_path)
+
+# Plot
+plot_waveforms(
+    analyzer = analyzer, 
+    unit_ids = [12, 16, 17], 
+    save_path = "path/to/outputs"
+    )
 ```
+This will
+- First, load the saved `spikeinterface` analyzer object.
+- Plot waveforms of selected unit ids across electrodes.
+- Optionally save the plot as a `.png`.
+
 ![Example waveforms](docs/unit_waveforms.png)
 
-### Extracting and plotting rasters
+### Extract and plot movement aligned spike rasters
+This step requires a pre-computed movement alignment file (`movement_event_alignment.csv`).
 ```python
+from neurokinematics.ephys.io import load_phy_sorting
 from neurokinematics.ephys.spikes.rasters import get_movement_aligned_rasters
+
+# Load sorter
+phy_sorter_path = 'path/to/phy/output'
+sorter = load_phy_sorting(phy_sorter_path)
+
+# Plot spike aligned rasters
 spike_rasters = get_movement_aligned_rasters(
-    alignment = alignment_df,
-    sorter = sorting,
+    alignment = alignment_df, # pre computed movement alignment dataframe
+    sorter = sorter,
     save_path = "path/to/outputs"
 )
 print(spike_rasters_obj.output_path)
 spike_rasters_df = spike_rasters.load() # returns spike rasters as dataframe
 ```
 This will
-- Align spikes for units in the `sorter` object to movement times defined in `alignment`.
+- Align spikes of units in the `sorter` object to movement times defined in the `alignment` dataframe.
 - Save aligned rasters as `movement_aligned_rasters.pkl` to `save_path`.
 - Return lightweight class to examine metadata and load aligned spikes as a dataframe.
 
@@ -115,8 +133,6 @@ raster_df = load_pickle('path/to/movement_aligned_rasters.pkl')
 unit_ids = [16, 17, 12]
 movement_plot_params = 
     {  
-    'pre_event': 0.5,
-    'post_event': 0.5,
     'node': 'r_hindpaw',
     'movement_event': 'end',
     'cmap': 'winter'
@@ -127,6 +143,10 @@ plot_movement_psth(raster_df, unit_ids, movement_plot_params) # plot with respec
 movement_plot_params['movement_event'] = 'max'
 plot_movement_psth(raster_df, unit_ids, movement_plot_params) # plot with respect to maximum velocity of movement
 ```
+This will
+- Create a combined spike raster and peri-stimulus time histogram for units aligned to movement events.
+- Values set in `movement_plot_params` determine what node and movement event is plotted.
+- Optionally save the plot as a `.png`.
 
 ![Example rasters](docs/r_hindpaw_end_3_units_psth.png) ![Example rasters](docs/r_hindpaw_max_3_units_psth.png)
 
