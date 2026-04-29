@@ -1,3 +1,9 @@
+"""Align data across modalities.
+
+This module provides high-level functions and minimal utilities for aligning high-speed video, and resulting pose data to simultaneously recording ephys.
+Currently supports alignment from strobe method (i.e. recording stobe output of camera on ephys acquisition analog channel), and aligning data from SLEAP generated pose tracks.
+"""
+
 import pathlib
 from pathlib import Path
 
@@ -37,19 +43,19 @@ def detect_camera_on(signal, fs, detection_settings:dict, save_path: Path | str 
     """Extracts frame times on analog channel based on strobe method.
 
     Args:
-        signal (np.memmap): Analog time series for channel with events
-        fs (float): Sampling rate of analog signal
-        detection_settings (dict): Dictionary of detection settings, either created manually or obtained from load_config
+        signal (np.memmap): Analog time series for channel with events.
+        fs (float): Sampling rate of analog signal.
+        detection_settings (dict): Dictionary of detection settings, either created manually or obtained from load_config.
         save_path (Path | str | None, optional): Directory to save results to. Defaults to None.
 
     Raises:
         ValueError: Check on appending frame captures. If signal is not long enough, or no strobe signal is present, error will be raised.
 
     Returns:
-        bouts (list): List of tuples containing start and end times of video recording
-        envelope (ndarray): Envelope of filtered analog signal
-        frame_captures (list): List of stored frame captures
-        frame_map (dataframe): Same as frame captures but stored as a dataframe. Much more conveient for long-term storage and use
+        bouts (list): List of tuples containing start and end times of video recording.
+        envelope (ndarray): Envelope of filtered analog signal.
+        frame_captures (list): List of stored frame captures.
+        frame_map (dataframe): Same as frame captures but stored as a dataframe. Much more conveient for long-term storage and use.
     """
     # FLIR camera generates square wave when frames are taken
     # get detection settings
@@ -114,15 +120,22 @@ def get_camera_events(directory: str, camera_cfg_file: str, save_path: Path | st
     """High-level call for getting frame times (camera events) from an ephys recording. Requires strobe method to be used for tracking frame captures on an analog channel.
 
     Args:
-        directory (str): Path for the recording to extract camera events from
-        camera_cfg_file (str): Config file to use for extracting frames. Config files should be stored in the 'configs/multimodal_cfg' folder in this projects root directory
+        directory (str): Path for the recording to extract camera events from.
+        camera_cfg_file (str): Config file to use for extracting frames. Config files should be stored in the 'configs/multimodal_cfg' folder in this projects root directory.
 
     Returns:
-        event_data (np.memmap): Memory mapped analog signal used for recording camera strobe
-        ts (np.memmap): Timestamps for analog channel
-        bouts (list): List of tuples containing start and end times for each video recorded during ephys session
-        frame_captures (list): List of stored frame captures
+        event_data (np.memmap): Memory mapped analog signal used for recording camera strobe.
+        ts (np.memmap): Timestamps for analog channel.
+        bouts (list): List of tuples containing start and end times for each video recorded during ephys session.
+        frame_captures (list): List of stored frame captures.
         continuous:
+    
+    Example:
+        >>> event_data, ts, bouts, frame_captures, continuous = get_camera_events(
+        ...     directory = "path/to/ephys",
+        ...     camera_cfg_file = "camera_alignment_cfg.yaml",
+        ...     save_path = "path/to/outputs"
+        ...     )
     """
     
     # load config
@@ -151,18 +164,27 @@ def align_movements_to_ephys(dirs: dict, fs: float = 30000., fps: float = 200., 
     Args:
         dirs (dict): Dictionary of directory strings/Paths containing `movement_events_.pkl`, `pose_data.csv`, and `video_alignment.csv`. 
         dirs ={
-            'events': path/to/event_pkls, 
-            'pose': path/to/pose_csvs, 
-            'alignment': path/to/alignment_csvs
+            'events': "path/to/events", 
+            'pose': "path/to/pose", 
+            'alignment': "path/to/alignment"
             }
         
         fs (float, optional): Sampling rate of ephys acquisition. Defaults to 30000..
         fps (float, optional): Frame rate of camera. Defaults to 200..
         save_path (Path | str | None, optional): Directory to save results to. Defaults to None.
 
-
     Returns:
         records_df (pd.DataFrame): Dataframe containing times of movement events translated to ephys samples/timestamps
+    
+    Example:
+        >>> records_df = align_movements_to_ephys(
+        ...     dirs = {
+        ...         "events": "path/to/events",
+        ...         "pose": "path/to/pose",
+        ...         "alignment": "path/to/alignment"
+        ...     },
+        ...     save_path = "path/to/outputs"
+        ...     )
     """
     
     # create paths
@@ -187,7 +209,6 @@ def align_movements_to_ephys(dirs: dict, fs: float = 30000., fps: float = 200., 
     movement_events = list(movements_df.index.unique())
     trials_array = movements_df['trial'].unique()
     nodes = movements_df.keys().drop(['date', 'trial'])
-    #resolve_id = lambda x, y: x[np.argmin(np.abs(x-y))]
 
     records = []
     for t in trials_array:
