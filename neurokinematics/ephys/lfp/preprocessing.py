@@ -27,9 +27,9 @@ def preprocess_lfp(data_path: Path, node_idx: int = 0, rec_idx: int = 0, fs_new=
     """Performs basic pre-processing of LFP data from .continuous recordings. Chunks, filters, and downsamples data to be stored as a memmap for later access.
 
     Args:
-        data_path (Path): Folder path of recorded data
-        node_idx (int): Index of record node used in open ephys recording
-        rec_idx (int): Index of recording idx used in open ephys recording
+        data_path (Path): Folder path of recorded data.
+        node_idx (int): Index of record node used in open ephys recording.
+        rec_idx (int): Index of recording idx used in open ephys recording.
         fs_new (float, optional): Sampling rate to downsample to. Defaults to 1000.0.
         chunk_duration_s (float, optional): Duration in seconds of data chunks. Defaults to 10.0.
         pad_duration_s (float, optional): Duration in seconds for data padding - for filtering. Defaults to 1.0.
@@ -39,10 +39,16 @@ def preprocess_lfp(data_path: Path, node_idx: int = 0, rec_idx: int = 0, fs_new=
         storage_format (str, optional): String indicating file format to store processed data as. Options: "zarr", "memmap". Defaults to "zarr".
 
     Returns:
-        dict: High level information of processed LFP data.
+        lfp_proc_obj (dataclass): Lightweight dataclass containing metadata for processed LFP data.
 
-    Usage:
-        _ = process_lfp('path/to/ephys/data', storage_format="zarr")
+    Example:
+        >>> lfp_proc_obj = process_lfp(
+        ...     data_path = 'path/to/ephys/data',
+        ...     save_path = 'path/to/outputs'
+        ...     )
+        >>> lfp_proc, metadata = lfp_proc_obj.load(return_metadata=True)
+        >>> lfp_proc_obj.output_path
+        PosixPath('path/to/outputs/lfp_preprocessed') # zarr store location
     """
 
     # create path vars
