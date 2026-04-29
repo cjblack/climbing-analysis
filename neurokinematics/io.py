@@ -36,6 +36,7 @@ CFG_PATHS = {
     'multimodal': CFG_ROOT_PATH / 'multimodal_cfg',
     'pose': CFG_ROOT_PATH / 'pose_cfg',
     'spksorting': CFG_ROOT_PATH / 'spk_sorting_cfg',
+    'lfp': CFG_ROOT_PATH / 'lfp_cfg',
     'session': CFG_ROOT_PATH / 'session_cfg'
 }
 
