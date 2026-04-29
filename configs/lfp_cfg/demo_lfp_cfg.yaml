@@ -1,0 +1,12 @@
+# set all the high-level informaiton for preprocessing lfp
+name: "lfp_preprocessing"
+dtype: float32
+chunking:
+  chunk_duration_s: 10.0
+  pad_duration_s: 1.0
+filters:
+  notch: 50.0
+  bandpass: (0.1, 100.0)
+  quality: 30.0
+downsample_rate: 1000.0
+storage_format: "zarr"
