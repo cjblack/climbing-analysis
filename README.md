@@ -21,7 +21,7 @@ cd neurokinematics
 conda env create -f environment_redux.yml
  ```
 
- For cuda capabilities (recommended if using this pacakge for spike sorting), use the following:
+ For cuda capabilities (recommended if using this package for spike sorting), use the following:
  ```bash
  conda env create -f environment_cuda.yml --solver=libmamba
  ```
