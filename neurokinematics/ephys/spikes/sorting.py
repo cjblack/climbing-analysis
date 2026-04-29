@@ -63,16 +63,19 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
 
     # save recording as binary format to kilosort4 folder
     recording.save_to_folder(data_path=recording_path) # might not need to run this step...**
-    analyzer = sorting_analyzer(sorting, recording, data_path, compute_dict = to_compute) # create sorting analyzer
+    analyzer = sorting_analyzer(sorting, recording, data_path, compute_dict = to_compute, save_path = save_path) # create sorting analyzer
     export_to_phy(analyzer, output_folder=phy_folder) # export to phy for visualization
     return sorting, recording, probe, analyzer
 
-def sorting_analyzer(sorting, recording, data_path, compute_dict: dict):
+def sorting_analyzer(sorting, recording, data_path, compute_dict: dict, save_path: Path | str | None = None):
     """
     Create sorting analyzer
     """
-    folder = data_path / 'sorting_analyzer'
-    analyzer = create_sorting_analyzer(sorting=sorting, recording=recording, format='binary_folder',return_in_uV=True,folder=folder)
+    if save_path is None:
+        save_path = data_path / 'sorting_analyzer'
+    else:
+        save_path = save_path / 'sorting_analyzer'
+    analyzer = create_sorting_analyzer(sorting=sorting, recording=recording, format='binary_folder',return_in_uV=True, folder = save_path)#folder=folder)
     analyzer.compute(compute_dict)#(['random_spikes', 'waveforms', 'templates', 'noise_levels', 'spike_locations'])
     _ = analyzer.compute('spike_amplitudes')
     _ = analyzer.compute('principal_components', n_components=5, mode="by_channel_local")
