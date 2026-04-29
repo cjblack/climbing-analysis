@@ -38,8 +38,7 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
         ...         }
         ...     )
     """
-    
-    
+
     node = movement_plot_params['node']
     movement_event = movement_plot_params['movement_event']
 
@@ -74,7 +73,7 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
     # load epoched lfp data
     epoch_path = Path(epoch_path)
     root = zarr.open_group(str(epoch_path), mode='r')
-    fs= 1000. # hard coded for testing
+    fs = root.attrs['fs'] # 1000. # hard coded for testing
     
     # get specified epoch data
     group = root[node][movement_event]
@@ -96,7 +95,7 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
 
     if erp_smooth:
         sigma_samples = 5
-        #sigma_samples = sigma_ms / 1000 * fs
+        sigma_samples = sigma_ms / 1000 * fs
         erp = gaussian_filter1d(
             erp,
             sigma = sigma_samples,
