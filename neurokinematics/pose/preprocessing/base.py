@@ -15,7 +15,7 @@ import glob
 import dask.dataframe as dd
 import pandas as pd
 
-from neurokinematics.io import load_config
+from neurokinematics.io import load_config, save_dataframe
 from neurokinematics.pose.io import dask_batch_load_files
 from neurokinematics.data.processed import PoseProcessed
 from neurokinematics.pose.preprocessing.cleaning import *
@@ -23,15 +23,26 @@ from neurokinematics.pose.movement_events import extract_movements
 
 
 
-def process_sleap(data_path: str, pose_cfg: str):
+def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = None):
     """Preprocess markerless pose data from sleap stored in a single directory.
 
     Args:
         data_path (str): Path to folder containing sleap `.h5` files
         pose_cfg (str): Config file stored in `configs/pose_cfg` directory
+        save_path (Path | str | None, optional): Directory to save results to. Defaults to None.
 
     Returns:
         PoseProcessed: Lightweight class storing metadata for preprocessing steps
+
+    Example:
+        >>> from neurokinematics.pose.preprocessing.base import process_sleap
+        >>> pose_proc_obj = process_sleap(
+        ...     data_path = "path/to/converted/sleap/files"
+        ...     pose_cfg = "simple_pose_cfg.yaml",
+        ...     save_path = "path/to/outputs"
+        ... )
+        >>> pose_proc_obj.pose_output_path
+        WindowsPath('path/to/outputs/pose_data.csv')
     """
 
     # now requires config file
@@ -43,13 +54,21 @@ def process_sleap(data_path: str, pose_cfg: str):
 
     # get / create paths
     data_path = Path(data_path)
-    pose_path = data_path / 'pose'
-    pose_path.mkdir(exist_ok=True)
+    if save_path:
+        # create save_path folder if provided
+        pose_path = Path(save_path) / 'pose'
+        pose_path.mkdir(parents=True, exist_ok=True)
+    else:
+        # if no save_path provided create folder in data_path
+        pose_path = data_path / 'pose'
+        pose_path.mkdir(exist_ok=True)
 
-    file_path = (data_path / f'*{file_format}').as_posix()
+    # set pose and movement event output paths
     pose_output_path = pose_path / 'pose_data.csv'
     me_output_path = pose_path / 'movement_events.pkl'
-
+    
+    # get file list to load
+    file_path = (data_path / f'*{file_format}').as_posix()
     file_list = glob.glob(file_path)
 
     # call dask batch load - this is lazy
@@ -61,7 +80,7 @@ def process_sleap(data_path: str, pose_cfg: str):
 
     # save dataframe, this is eager as we need to compute before saving
     ddf = ddf.compute()
-    ddf.to_csv(pose_output_path)
+    save_dataframe(ddf, pose_output_path, 'csv') # less modular -> ddf.to_csv(pose_output_path)
 
     # extract movements
     if movement_detection['enabled']:
@@ -75,7 +94,9 @@ def process_sleap(data_path: str, pose_cfg: str):
             movement_events.append(extract_movements(df, node_list))
     
         movement_events_df = pd.concat(movement_events)
-        pd.DataFrame.to_pickle(movement_events_df, me_output_path)
+        
+        # save movement events
+        save_dataframe(movement_events_df, me_output_path, 'pickle') # less modular ->pd.DataFrame.to_pickle(movement_events_df, me_output_path)
 
     # create lazy pose object
     pose_processed_obj = PoseProcessed(
