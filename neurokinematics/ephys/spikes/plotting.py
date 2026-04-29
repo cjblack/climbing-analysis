@@ -18,14 +18,22 @@ from neurokinematics.ephys.io import *
 
 # Simple plots for spike data
 
-def plot_waveforms(analyzer, unit_ids: list, max_spikes: int = 100, save_path: Path | None = None):
+def plot_waveforms(analyzer, unit_ids: list, max_spikes: int = 100, save_path: Path | str | None = None):
     """Plots individual and average waveforms of specified units across identified channels.
 
     Args:
         analyzer (SortingAnalyzer): Spike sorting analyzer from spikeinterface, can either be used from running the sort function or loading directly from a save.
         unit_ids (list): List of unit ids to plot.
         max_spikes (int, optional): Maximum number of single spike waveforms to plot, best to set this number low, especially when plotting multiple units. Defaults to 100.
-        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
+        save_path (Path | str | None, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
+
+    Example:
+        >>> plot_waveforms(
+        ...     analyzer = analyzer,
+        ...     unit_ids = [5, 10, 15],
+        ...     max_spikes = 100,
+        ...     save_path = "path/to/outputs"     
+        ...     )
     """
     
     # lazy correction if plotting one unit
@@ -46,13 +54,20 @@ def plot_waveforms(analyzer, unit_ids: list, max_spikes: int = 100, save_path: P
     plt.show()
 
 
-def plot_autocorrelogram(sorter, unit_ids: list, save_path: Path | None = None):
+def plot_autocorrelogram(sorter, unit_ids: list, save_path: Path | str | None = None):
     """Plots autocorrelogram for specified units.
 
     Args:
         sorter (SortingExtractor): Spikeinterface Sorting Extractor object. Get from either running sort, or loading from previous sorting.
         unit_ids (list): List of unit ids to plot.
-        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
+        save_path (Path | str | None, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
+    
+    Example:
+        >>> plot_autocorrelogram(
+        ...     sorter = sorter,
+        ...     unit_ids = [5, 10, 15],
+        ...     save_path = "path/to/outputs"
+        ...     )
     """
     
     # lazy correction if plotting one unit
@@ -73,23 +88,36 @@ def plot_autocorrelogram(sorter, unit_ids: list, save_path: Path | None = None):
     plt.show()
 
 
-def plot_movement_psth(rasters_df: pd.DataFrame, unit_ids: list, movement_plot_params: dict | None = None, save_path: Path | None = None):
+def plot_movement_psth(rasters_df: pd.DataFrame, unit_ids: list, movement_plot_params: dict | None = None, save_path: Path | str | None = None):
     """Plot psth with respect to movement events.
 
     Args:
         rasters_df (pd.DataFrame): Dataframe containing spike rasters aligned to movement.
-        unit_ids (list): List of unit ids to plot
+        unit_ids (list): List of unit ids to plot.
         movement_plot_params (dict | None, optional): Dictionary containing parameters for plotting requires:
             {
             'node': str, body part (node). This will be based on the nodes using during markerless pose estimation.
             'movement_event': str, type of movement (e.g. 'start', 'end', 'max'). This will be based on the movement events you extract.
-            'mpl_cmap': str, matplotlib colormap to use.
-            'bin_size': Bin size in seconds for psth (default is 0.05)
+            'cmap': str, matplotlib colormap to use.
+            'bin_size': Bin size in seconds for psth (default is 0.05).
             }
         
             Defaults to None, which defaults to plotting rasters with respect to the first rows node and event type, in black.
 
-        save_path (Path, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
+        save_path (Path | str | None, optional): Determines whether plot is saved and to where. Figure will be saved in the save_path directory as a '.png'. Defaults to None.
+    
+    Example:
+        >>> plot_movement_psth(
+        ...     rasters_df = rasters_df,
+        ...     unit_ids = [5, 10, 15],
+        ...     movement_plot_params = {
+        ...         'node': 'r_hindpaw',
+        ...         'movement_event': 'end',
+        ...         'cmap': 'winter'
+        ...         'bin_size': 0.05
+        ...         },
+        ...     save_path = "path/to/outputs"
+        ...     )
     """
     # lazy correction if plotting one unit
     if not isinstance(unit_ids,list):
