@@ -1,3 +1,8 @@
+"""Epoch lfp data with respect to events.
+
+This module should contain only functions that help align lfp data to experimental or behavioural events.
+Currently only supports alignment to movement events from markerless pose estimation data.
+"""
 
 from pathlib import Path
 
@@ -7,8 +12,36 @@ import zarr
 
 from neurokinematics.io import load_csv, load_zarr
 
-def get_movement_aligned_erps(alignment: pd.DataFrame | Path | str, lfp_data: dict | Path | str, save_path: Path | str, storage_format: str = 'pickle', channel_select: np.ndarray | None = None):
+def get_movement_aligned_erps(alignment: pd.DataFrame | Path | str, lfp_data: Path | str | dict, save_path: Path | str, epoch_window: tuple = (0.5,0.5), channel_select: np.ndarray | None = None):
+    """Align lfp data to movement events from pose estimation data.
 
+    Args:
+        alignment (pd.DataFrame | Path | str): Dataframe or path to `movement_event_alignment.csv` to load dataframe containing ephys aligned movement events.
+        lfp_data (Path | str | dict): Path to zarr store containing preprocessed lfp data, or dictionary containing the relevant data:
+            lfp_data = {
+                'lfp': np.ndarray,
+                'meta': metadata,
+                'timestamps': np.ndarray,
+                'channels: np.ndarray
+            }
+        save_path (Path | str): Path to save zarr store.
+        epoch_window (tuple): Tuple containing float values for pre [0] and post[1] time windows to extract with respect to event. Defaults to (0.5, 0.5).
+        channel_select (np.ndarray | None, optional): Array of channels to process. Use this argument for avoiding aligning analog channels to movement events, unless necessary. Defaults to None.
+
+    Raises:
+        FileNotFoundError: Raised if alignment file does not exist.
+
+    Returns:
+        root (zarr.hierarcy.Group): Zarr object containing information about the erp alignment.
+    
+    Example:
+        >>> lfp_root = get_movement_aligned_erps(
+        ...     alignment = alignment_df,
+        ...     lfp_data = "path/to/zarr/store",
+        ...     epoch_window = (0.5, 0.5),
+        ...     channel_select = np.arange(64)
+        ... )
+    """
     
     # load alignment
     if isinstance(alignment, (Path, str)):
@@ -26,17 +59,26 @@ def get_movement_aligned_erps(alignment: pd.DataFrame | Path | str, lfp_data: di
             timestamps = load_zarr(lfp_path, dataset='time')[0][:] # load into memory
             channels = load_zarr(lfp_path, dataset='channel')[0]
     else:
+        # assumes dict...not an ideal implementation
         lfp = lfp_data['lfp']
         meta = lfp_data['meta']
         timestamps = lfp_data['timestamps']
         channels = lfp_data['channels']
 
-    # select channels
-    if channel_select is None:
-        channel_select = channels
+    # set vars
+    # set sampling rate to processed fs
+    fs = meta['fs_processed']
 
+    # set pre/post event range
+    pre_s = epoch_window[0]
+    post_s = epoch_window[1]
+
+    # check select channels
+    if channel_select is None:
+        channel_select = channels # default to all channels - not ideal
 
     if isinstance(channel_select, np.ndarray):
+        # check that selected channels exist within the recording
         if (len(channel_select) > lfp.shape[1]):
             print("Selected more channels than available. Defaulting to all channels")
             channel_select = channels
@@ -47,19 +89,18 @@ def get_movement_aligned_erps(alignment: pd.DataFrame | Path | str, lfp_data: di
     channel_select = np.asarray(channel_select)
     channel_idxs = np.where(np.isin(channels, channel_select))[0]
 
-    # set sampling rate to processed fs
-    fs = meta['fs_processed']
-
-    # 500ms pre and 500ms pose including event sample
-    pre_s = 0.5
-    post_s = 0.5
+    # convert timestamp window to sample window
     pre_samples = int(pre_s*fs)
     post_samples = int(post_s*fs)
-    n_timepoints = pre_samples + post_samples + 1
+    n_timepoints = pre_samples + post_samples + 1 # +1 to account for event at t = 0
 
     time_axis = np.arange(-pre_samples, post_samples+1) / fs
+
+    # check that save path exists
     save_path = Path(save_path)
     save_path.mkdir(parents=True, exist_ok=True)
+    
+    # create zarr store
     root = zarr.open_group(str(save_path.as_posix()), mode="w") # check if zarr has issue with type Path
 
     # metadata
@@ -97,19 +138,24 @@ def get_movement_aligned_erps(alignment: pd.DataFrame | Path | str, lfp_data: di
                 #center_sample = int(row["event_times_samples"])
                 center_ts = row["event_times_ts"]
             
+                # align event timestamp to lfp timestamp
                 sample_index = np.argmin(np.abs(timestamps-center_ts)) # this may need to be optimised
 
-                start = sample_index - pre_samples
-                stop = sample_index + post_samples + 1
+                start = sample_index - pre_samples # start index
+                stop = sample_index + post_samples + 1 # end index
+
+                # make sure the epoch window doesn't extend outside the recording
                 if start < 0 or stop > lfp.shape[0]:
                     continue
-
+                
+                # epoch
                 epochs[i, :, :] = lfp[start:stop, channel_idxs].T
-                valid[i] = True
+                valid[i] = True # boolean for easy analysis downstream
 
             event_group.create_dataset("valid", data=valid)
             event_group.create_dataset("video_id", data=event_df["trial"].to_numpy())
             event_group.create_dataset("frame_ids", data=event_df["frame_ids"].to_numpy())
             event_group.create_dataset("event_time_ts", data=event_df["event_times_ts"].to_numpy())
             event_group.create_dataset("event_time_samples", data=event_df["event_times_samples"].to_numpy())
+
     return root
