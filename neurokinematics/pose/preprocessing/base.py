@@ -42,7 +42,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
         ...     save_path = "path/to/outputs"
         ... )
         >>> pose_proc_obj.pose_output_path
-        WindowsPath('path/to/outputs/pose_data.csv')
+        PosixPath('path/to/outputs/pose_data.csv')
     """
 
     # now requires config file
