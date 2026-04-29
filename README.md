@@ -255,7 +255,7 @@ Future work will focus on generalising input interfaces and expanding format sup
 - Probes (e.g. Neuropixels, Neuralynx)
 
 ## In development 
-### [`workflows`](https://github.com/cjblack/neurokinematics/tree/main/workflows)
+### [`datajoint workflows`](https://github.com/cjblack/neurokinematics/tree/main/examples/datajoint_workflow)
 Experimental workflow ingests recording session into DataJoint pipeline. Currently handles registration and data structuring. Signal processing steps are not yet included.
 
 Requires a `.env` file with database connection details.
