@@ -1,12 +1,190 @@
 from pathlib import Path
 import xmltodict
 import pandas as pd
+import yaml
 import dask.dataframe as dd
 from neurokinematics.decorators import log_call
+
+# nk io
+from neurokinematics.io import create_session_dirs
+
+# pose
+from neurokinematics.pose.preprocessing.base import process_sleap
 from neurokinematics.pose.io import load_df_list, load_pickle
+
+# ephys
 from neurokinematics.ephys.io import *
-from neurokinematics.ephys.spike_sorting import *
+#from neurokinematics.ephys.spike_sorting import *
+from neurokinematics.ephys.spikes.sorting import sort
 from neurokinematics.ephys.lfp.preprocessing import preprocess_lfp
+
+
+
+class ExperimentSession:
+    """
+    Class for loading in all relevant pose and ephys data during climbing session.
+    Requires processing of video data for pose estimation to be stored within data directory in 'PoseData' folder.
+    
+    Use:
+    from neurokinematics.data.session import ExperimentalSessionData
+    csession = ClimbingSessionData('path/to/data/directory')
+    """
+    def __init__(self, session_id: str, ephys_data_path: Path | str, pose_data_path: Path | str, output_root_path: Path | str | None = None, cfg: str ='demo_session.yaml'):
+  
+        # set session id
+        self.session_id = session_id
+
+        # ensure input paths are Path
+        self.ephys_data_path = Path(ephys_data_path)
+        self.pose_data_path = Path(pose_data_path)
+        
+        # load configs
+        if cfg is not None:
+            self._load_configs(cfg)
+            cfg_output_root_path = self.cfg.get('session', {}).get('output_root', None)
+        else:
+            self.cfg = {}
+            cfg_output_root_path = None
+        #self._load_configs(cfg)
+
+        # resolve output root
+        #cfg_output_root_path = self.cfg.get('session', {}).get('output_root', None)
+        output_root = output_root_path or cfg_output_root_path
+        if output_root is None:
+            self.output_root = Path.cwd() / "nk_sessions"
+        else:
+            self.output_root = Path(output_root)
+
+        # create session directory
+        self.session_path = self.output_root / f"{self.session_id}_nk"
+        self.dirs = create_session_dirs(self.session_path)
+
+        if cfg is not None:
+            self._save_session_config()
+
+
+    @classmethod
+    def from_existing(cls, session_path: Path | str):
+        session_path = Path(session_path)
+
+        session_config_path = session_path / "session_config.yaml"
+
+        with open(session_config_path, "r") as f:
+            cfg = yaml.safe_load(f)
+        
+        runtime = cfg['session_runtime']
+
+        session = cls(
+            session_id = runtime['session_id'],
+            ephys_data_path = runtime['ephys_data_path'],
+            pose_data_path = runtime['pose_data_path'],
+            output_root_path = runtime['output_root'],
+            cfg = None
+        )
+
+        # set configs 
+        session.cfg = cfg['configs']['session']
+        session.pose_cfg = cfg['configs']['pose']
+        session.lfp_preprocessing_cfg = cfg['configs']['lfp']
+        session.multimodal_cfg = cfg['configs']['multimodal']
+
+        # set paths
+        session.session_path = session_path
+
+        # recreate dirs
+        if 'session_dirs' in runtime:
+            session.dirs = {key: Path(val) for key, val in runtime['session_dirs'].items()}
+        else:
+            session.dirs = create_session_dirs(session.session_path)
+
+        return session
+
+    def __str__(self):
+        """
+        Returns basic details about the session.
+        """
+        return "".join(
+
+            [
+                "\nExperiment Session Object\n",
+                f"\n    Directory: {self.session_path}",
+                f"\n    Session ID: {self.session_id}"
+            ]
+        )
+    
+    def _load_configs(self, cfg):
+
+        self.cfg = load_config(cfg, config_type='session')
+        cfg_group = self.cfg['configs']
+        self.sorting_cfg = load_config(cfg_group['spikes'], config_type='spksorting')
+        self.pose_cfg = load_config(cfg_group['pose'], config_type='pose')
+        self.lfp_preprocessing_cfg = load_config(cfg_group['lfp'], config_type='lfp')
+        self.multimodal_cfg = load_config(cfg_group['multi_modal'], config_type='multimodal')
+
+    def _save_session_config(self):
+
+        cfg = {
+            'session_runtime':{
+                "session_id": self.session_id,
+                "ephys_data_path": str(self.ephys_data_path),
+                "pose_data_path": str(self.pose_data_path),
+                "output_root": str(self.output_root),
+                "session_path": str(self.session_path),
+                "session_dirs": {key: str(val) for key, val in self.dirs.items()}
+                },
+            'configs':{
+                'session': self.cfg,
+                'pose': self.pose_cfg,
+                'lfp': self.lfp_preprocessing_cfg,
+                'multimodal': self.multimodal_cfg
+                }
+            }
+        
+
+        session_config_path = self.session_path / "session_config.yaml"
+
+        with open(session_config_path, "w") as f:
+            yaml.safe_dump(cfg, f, sort_keys=False)
+
+    def run_pose_processing(self):
+        
+        self.pose_processed = process_sleap(
+            data_path = self.pose_data_path,
+            pose_cfg = self.cfg['configs']['pose'],
+            save_path = self.dirs['pose']
+        )
+    
+    def run_spike_sorting(self):
+
+        self.sorter, self.recording, self.probe, self.analyzer = sort(
+            data_path = self.ephys_data_path,
+            cfg_file = self.cfg['configs']['spikes'],
+            save_path = self.dirs['spikes']
+        )
+    
+    @log_call(label='preprocess lfp', type='process')
+    def run_lfp_processing(self):
+
+        if self.cfg['session']['ephys']['acquisition'] == 'openephys':
+            self.lfp_processed = preprocess_lfp(
+                data_path = self.ephys_data_path,
+                node_idx = self.cfg['session']['ephys']['lfp']['node_idx'],
+                rec_idx = self.cfg['session']['ephys']['lfp']['node_idx'],
+                fs_new = self.lfp_preprocessing_cfg['downsample_rate'],
+                chunk_duration_s = self.lfp_preprocessing_cfg['chunking']['chunk_duration_s'],
+                pad_duration_s = self.lfp_preprocessing_cfg['chunking']['pad_duration_s'],
+                filter_info = {
+                    "n_": self.lfp_preprocessing_cfg['filters']["notch"],
+                    "bp_": self.lfp_preprocessing_cfg['filters']["bandpass"],
+                    "quality": self.lfp_preprocessing_cfg['filters']["quality"]
+                },
+                dtype = self.lfp_preprocessing_cfg['dtype'],
+                save_path = self.dirs['lfp'],
+                storage_format = self.lfp_preprocessing_cfg['storage_format']
+            )
+
+
+    
 
 
 class ClimbingSession:
