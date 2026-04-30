@@ -29,8 +29,10 @@ This environment installs PyTorch with CUDA support for GPU accelerated spike-so
 ### &#x26a0;&#xfe0f; Requirements
 - NVIDIA GPU with CUDA support
 - Compatible drives and CUDA toolkit installed
+- Tested on:
+    - NVIDIA RTX 50 series
+    - NVIDIA RTX 20 series
 
-Tested on **NVIDIA RTX 50 series**.
 
 
 ## Usage
