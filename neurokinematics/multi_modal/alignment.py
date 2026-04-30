@@ -202,8 +202,8 @@ def align_movements_to_ephys(dirs: dict, fs: float = 30000., fps: float = 200., 
     
     # load into dataframes
     movements_df = load_pickle(movement_df_path, method='pandas')
-    pose_df = load_csv(pose_df_path, pkg_format='pandas')
-    frame_captures_df = load_csv(frame_captures_df_path, pkg_format='pandas')
+    pose_df = load_csv(pose_df_path, method='pandas')
+    frame_captures_df = load_csv(frame_captures_df_path, method='pandas')
 
     # create vars
     movement_events = list(movements_df.index.unique())

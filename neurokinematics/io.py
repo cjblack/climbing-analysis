@@ -110,20 +110,20 @@ def save_dataframe(df, file_path, storage_format:str = 'csv', **kwargs):
 
 ### * loading files * ###
 
-def load_csv(file_path: str, pkg_format: str = 'pandas'):
+def load_csv(file_path: str, method: str = 'pandas'):
     """Load csv files.
 
     Args:
         file_path (str): File path, ending in '.csv'
-        pkg_format (str, optional): String of the dataframe package to use for loading the .csv file. Options are 'dask' and 'pandas'. 'dask' will do a lazy load. Defaults to 'pandas'.
+        method (str, optional): String of the dataframe package to use for loading the .csv file. Options are 'dask' and 'pandas'. 'dask' will do a lazy load. Defaults to 'pandas'.
 
     Returns:
-        dataframe: Pandas or dask dataframe, depending on 'pkg_format' argument. Defaults to a pandas dataframe.
+        dataframe: Pandas or dask dataframe, depending on 'method' argument. Defaults to a pandas dataframe.
     """
-    pkg_format = pkg_format.lower()
-    if pkg_format == 'pandas':
+    method = method.lower()
+    if method == 'pandas':
         df = pd.read_csv(file_path)
-    elif pkg_format == 'dask':
+    elif method == 'dask':
         df = dd.read_csv(file_path)
     return df
 

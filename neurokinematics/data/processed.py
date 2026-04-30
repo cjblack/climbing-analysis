@@ -92,24 +92,24 @@ class PoseProcessed:
     fps: float
     movement_output_path: Optional[Path] = None
 
-    def load_pose(self, pkg_format: str = 'dask'):
+    def load_pose(self, method: str = 'dask'):
         """Load pose estimation data into dataframe.
 
         Args:
-            pkg_format (str, optional): Method to use for loading data. Options are 'dask', 'pandas'. Using 'dask' provides a lazy load, while 'pandas' will load into memory. Defaults to 'dask'.
+            method (str, optional): Method to use for loading data. Options are 'dask', 'pandas'. Using 'dask' provides a lazy load, while 'pandas' will load into memory. Defaults to 'dask'.
 
         Returns:
             data (dataframe): Dataframe containing preprocessed pose estimation data.
         """
         if self.storage_format == "csv":
-            data = load_csv(self.pose_output_path, pkg_format=pkg_format)
+            data = load_csv(self.pose_output_path, method=method)
             return data
         
     def load_movement(self, method: str = 'pandas'):
         """Load movement event data into dataframe using neurokinematics.io.load_pickle
 
         Args:
-            pkg_format (str, optional): Method to use when reading in data. Options are 'default', which uses pickle, or 'pandas'. Defaults to 'pandas'.
+            method (str, optional): Method to use when reading in data. Options are 'default', which uses pickle, or 'pandas'. Defaults to 'pandas'.
 
         Returns:
             data (dataframe): Dataframe containing extracted movement events.

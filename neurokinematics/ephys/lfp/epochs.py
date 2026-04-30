@@ -48,7 +48,7 @@ def get_movement_aligned_erps(alignment: pd.DataFrame | Path | str, lfp_data: Pa
     if isinstance(alignment, (Path, str)):
         alignment_path = Path(alignment)
         if alignment_path.exists():
-            alignment = load_csv(alignment_path, pkg_format='pandas')
+            alignment = load_csv(alignment_path, method ='pandas')
         else:
             raise FileNotFoundError(f'Alignment file not found {alignment}.')
         
