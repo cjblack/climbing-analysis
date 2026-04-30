@@ -32,6 +32,7 @@ neurokinematics/state_space_analysis/
 neurokinematics/distributed/
 neurokinematics/models/
 aws/
+/neurokinematics/pose/summary.py
 
 # datajoint
 /workflows/
