@@ -271,6 +271,8 @@ def load_config(filename: Path | str, config_type: str | None = None):
             raise ValueError(f"Invalid config_type '{config_type}'. Valid options are: {valid_ops}")
         
         file_path = CFG_PATHS[config_type] / filename
+    else:
+        file_path = Path(filename) # for tests
 
     file_path = _require_file(file_path)
 
