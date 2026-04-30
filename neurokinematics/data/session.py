@@ -38,6 +38,12 @@ class ExperimentSession:
         self.ephys_data_path = Path(ephys_data_path)
         self.pose_data_path = Path(pose_data_path)
         
+        # then ensure that paths exist...
+        if not self.ephys_data_path.exists():
+            raise FileNotFoundError(f"Ephys path does not exist: {self.ephys_data_path}")
+        if not self.pose_data_path.exists():
+            raise FileNotFoundError(f"Pose path does not exist: {self.pose_data_path}")
+        
         # load configs
         if cfg is not None:
             self._load_configs(cfg)
