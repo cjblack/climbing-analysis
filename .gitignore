@@ -37,3 +37,7 @@ aws/
 workflows/
 #neurokinematics/schema.py
 #dj_config.py
+
+# environments
+environment.yml
+environment_redux.yml
