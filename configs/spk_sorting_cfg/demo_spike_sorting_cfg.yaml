@@ -15,3 +15,4 @@ probe_id: "ASSY-236-H5"
 group_mode: 'auto'
 channel_map: "h5_open_ephys_acquisition_channel_map.npy"
 stream_name: "Record Node 109#Acquisition_Board-100.acquisition_board-B"
+sample_rate: 30000.
