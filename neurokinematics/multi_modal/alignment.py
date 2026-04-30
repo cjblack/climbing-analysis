@@ -4,8 +4,10 @@ This module provides high-level functions and minimal utilities for aligning hig
 Currently supports alignment from strobe method (i.e. recording stobe output of camera on ephys acquisition analog channel), and aligning data from SLEAP generated pose tracks.
 """
 
-import pathlib
+#import pathlib
 from pathlib import Path
+
+from tqdm.auto import tqdm
 
 from scipy.signal import hilbert, butter, filtfilt
 from scipy.ndimage import label
@@ -80,7 +82,8 @@ def detect_camera_on(signal, fs, detection_settings:dict, save_path: Path | str 
     bouts = []
     frame_captures = []
     frame_rows = []
-    for i in range(1, num_features + 1):
+    for i in tqdm(range(1, num_features + 1), desc="Detecting camera bouts", total=num_features, unit="bout", leave=True):
+    #for i in range(1, num_features + 1):
         indices = np.where(labeled_array == i)[0]
         duration_sec = len(indices) / fs
         if duration_sec >= min_bout_duration:
