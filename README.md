@@ -45,11 +45,11 @@ This environment installs PyTorch with CUDA support for GPU accelerated spike-so
     - NVIDIA RTX 20 series
 
 ## Documentation
-- Pose processing (docs/pose.md)
-- Spike sorting (docs/spikes.md)
-- LFP processing (docs/lfp.md)
-- Multi-modal (docs/multi_modal.md)
-- Data (docs/data.md)
+- [Pose processing](docs/pose.md)
+- [Spike sorting](docs/spikes.md)
+- [LFP processing](docs/lfp.md)
+- [Multi-modal](docs/multi_modal.md)
+- [Data](docs/data.md)
 
 
 ## Scope and current support
