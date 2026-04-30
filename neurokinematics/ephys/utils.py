@@ -1,3 +1,10 @@
+""" 
+
+DEPRECATED -- replaced primarily by ephys.io
+
+"""
+
+
 import os
 from pathlib import Path
 import urllib.error
