@@ -11,10 +11,10 @@ session:
       rec_idx: 0
 
 configs:
-  spikes: "sample_spike_sorting_cfg.yaml"
+  spikes: "demo_spike_sorting_cfg.yaml"
   lfp: "demo_lfp_cfg.yaml"
-  pose: "simple_pose_cfg.yaml"
-  multi_modal: "camera_alignment_cfg.yaml"
+  pose: "demo_pose_cfg.yaml"
+  multi_modal: "demo_camera_alignment_cfg.yaml"
 
 pipeline:
   run_pose: true

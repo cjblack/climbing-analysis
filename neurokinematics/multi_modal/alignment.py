@@ -133,7 +133,7 @@ def get_camera_events(directory: str, camera_cfg_file: str, save_path: Path | st
     Example:
         >>> event_data, ts, bouts, frame_captures, continuous = get_camera_events(
         ...     directory = "path/to/ephys",
-        ...     camera_cfg_file = "camera_alignment_cfg.yaml",
+        ...     camera_cfg_file = "demo_camera_alignment_cfg.yaml",
         ...     save_path = "path/to/outputs"
         ...     )
     """

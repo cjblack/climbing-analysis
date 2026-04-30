@@ -37,7 +37,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     Example:
         >>> pose_proc_obj = process_sleap(
         ...     data_path = "path/to/converted/sleap/files"
-        ...     pose_cfg = "simple_pose_cfg.yaml",
+        ...     pose_cfg = "demo_pose_cfg.yaml",
         ...     save_path = "path/to/outputs"
         ... )
         >>> pose_proc_obj.pose_output_path

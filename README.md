@@ -44,7 +44,7 @@ This environment installs PyTorch with CUDA support for GPU accelerated spike-so
 from neurokinematics.pose.preprocessing.base import process_sleap
 pose = process_sleap(
     data_path = "path/to/sleap/h5/files",
-    pose_cfg = "simple_pose_cfg.yaml",
+    pose_cfg = "demo_pose_cfg.yaml",
     save_path = "path/to/save/directory # optional
 )
 
@@ -207,7 +207,7 @@ from neurokinematics.multi_modal.alignment import get_camera_events
 
 event_data, ts, bouts, frame_captures, continuous = get_camera_events(
     data_path = "path/to/ephys", 
-    camera_cfg_file = "camera_alignment_cfg.yaml",
+    camera_cfg_file = "demo_camera_alignment_cfg.yaml",
     save_path = "path/to/outputs"
     )
 ```
