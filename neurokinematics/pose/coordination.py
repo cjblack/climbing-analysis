@@ -1,3 +1,10 @@
+"""Module for computing coordination metrics.
+
+This module mainly calculates phase offset, but will be expanded in the future to incorporate temporal overlap metrics and stability measures.
+
+"""
+
+
 import dask
 import numpy as np
 import pandas as pd
