@@ -57,7 +57,7 @@ neurokinematics/
 │   ├── multi_modal/            # Cross-modal alignment
 │   └── data/                   # Session/data abstractions
 ├── configs/                    # YAML configuration files
-├── docs/                       # Extended documentation/plots
+├── docs/                       # Extended documentation/example figures
 ├── tests/                      # Unit and integration tests
 ├── examples/                   # Example workflows
 └── notebooks/                  # Jupyter demos
