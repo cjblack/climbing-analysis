@@ -44,6 +44,25 @@ This environment installs PyTorch with CUDA support for GPU accelerated spike-so
     - NVIDIA RTX 50 series
     - NVIDIA RTX 20 series
 
+## Repo structure
+```text
+neurokinematics/
+├── neurokinematics/            # Source package
+│   ├── pose/                   # Pose processing
+│   ├── ephys/ 
+│   │   ├──channel_maps/        # Custom acquisition channel maps
+│   │   ├──lfp/                 # LFP processing
+│   │   ├──probe_interfaces/    # Probe geometry/metadata
+│   │   └──spikes/              # Spike processing
+│   ├── multi_modal/            # Cross-modal alignment
+│   └── data/                   # Session/data abstractions
+├── configs/                    # YAML configuration files
+├── docs/                       # Extended documentation/plots
+├── tests/                      # Unit and integration tests
+├── examples/                   # Example workflows
+└── notebooks/                  # Jupyter demos
+```
+
 ## Documentation
 - [Pose processing](docs/pose.md)
 - [Spike sorting](docs/spikes.md)
