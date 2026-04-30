@@ -58,7 +58,6 @@ This will
 - Optionally extract and save movement events to `movement_events.pkl` (if enabled in the config file).
 - Returns a lightweight object to examine metadata and load processed pose and/or movement event (if enabled) results as a dataframe.
 
-If `save_path` is not provided, outputs are written to `pose/` folder inside `data_path`.
 
 ### [`spikes`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/ephys/spikes)
 Currently tested with data acquired from Cambridge Neurotech H5 probe using the Open Ephys acquisition system, and spikesorting with kilosort4.
@@ -186,7 +185,7 @@ from neurokinematics.io import load_csv
 alignment_df = load_csv("path/to/movement_event_alignment.csv") # required
 lfp_root = get_movement_aligned_erps(
     alignment = alignment_df,
-    lfp_data = "path/to/zarr/store",
+    lfp_data = "path/to/zarr/store", # alternatively, lfp_proc_obj.output_path if processing was just performed
     save_path = "path/to/outputs",
     channel_select = [0,1,2,3,4] # set this according to the ephys channels you want to process
 )
@@ -195,6 +194,25 @@ This will
 - Align lfp data from specified channels from `channel_select` to ephys aligned events in `movement_event_alignment.csv`.
 - Create a zarr store, saving associated metadata and subgroups as `node/movement_event`.
 - Return the root zarr group as `lfp_root`.
+
+### Plot resulting erps
+The resulting epoched data can then be used to plot grand averages across channels.
+```python
+from neurokinematics.ephys.lfp.plotting import plot_movement_erps_probe
+plot_movement_erps_probe(
+    epoch_path = "path/to/zarr/store",
+    channels = [1, 2, 3],
+    movement_plot_params = {
+        'node' = 'node',
+        'movement_event' = 'movement_event',
+        'baseline_correct': True,
+        'smooth': True,
+        'xlims': (-0.25, 0.5),
+        'cmap': 'winter'
+    }
+)
+```
+![Example ERPs](docs/r_hindpaw_end_average_erp_across_chans.png)
 
 ### [`multi_modal`](https://github.com/cjblack/neurokinematics/tree/main/neurokinematics/multi_modal)
 
