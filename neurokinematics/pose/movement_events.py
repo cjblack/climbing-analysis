@@ -5,24 +5,8 @@ import pandas as pd
 import dask
 import numpy as np
 
-from neurokinematics.pose.utils import load_df_list
-
-def save_stances(directory):
-    pose_directory = Path(directory) / 'pose'
-    post_data_path = pose_directory / 'pose.h5'
-
-    if not pose_data_path.exists():
-        raise NameError('pose.h5 file not found.')
-    
-    df_list = load_df_list(pose_data_path)
-    df_list_len = df_list.__len__()
-    stance_list = [None]*df_list_len
-    for i, df in enumerate(df_list):
-        stance_list[i] = extract_stances(df)
-    
-    stance_dfs = pd.concat(stance_list)
-    pd.DataFrame.to_pickle(stance_dfs, pose_directory / 'stances.pkl') # csv is a nightmare for the rows
-
+#from neurokinematics.pose.utils import load_df_list
+from neurokinematics.pose.io import load_df_list
 
 def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., distance: int = 100, thresh: float = 0.1):
     """Extracts start and stop time indices of node movements, as well as maximum velocity during movement bouts.
@@ -37,8 +21,6 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
     Returns:
         pd.DataFrame: Pandas DataFrame containing start, stop, and maximum velocity indices for each node.
     """
-    
-    #NODES = ['r_forepaw','l_forepaw','r_hindpaw','l_hindpaw']
 
     stances = dict()
     trial_ = df['Trial'].min()#int(df.attrs['Trial'].split('T')[-1])
@@ -67,8 +49,8 @@ def get_start_and_end(data: np.array, peaks, threshold: float):
     """Identifies start and stop of movements from a pose estimation time series.
 
     Args:
-        data (np.array): Array containing velocity/diff (n-1 samples) of time series.
-        peaks (_type_): Array containing indices of peak velocities/diff of time series.
+        data (np.ndarray): Array containing velocity/diff (n-1 samples) of time series.
+        peaks (np.ndarray): Array containing indices of peak velocities/diff of time series.
         threshold (float): Threshold in pixels for what is considered a movement.
 
     Returns:
