@@ -1,9 +1,15 @@
 from pathlib import Path
-import yaml
+import pytest
 
 from neurokinematics.data.session import ExperimentSession
 
 def test_experiment_session_create_and_reload(tmp_path):
+    """Test for creating and reloading ExperimentSession object.
+
+    Args:
+        tmp_path (Path): Temporary path for pytest.
+    """
+
     # create dummy dirs
     ephys_path = tmp_path / 'ephys_data_path'
     pose_path = tmp_path / 'pose_data_path'
@@ -37,11 +43,16 @@ def test_experiment_session_create_and_reload(tmp_path):
     assert reloaded.session_path == session.session_path
 
 def test_invalid_paths(tmp_path):
+    """Test for catching non-existent file paths.
+
+    Args:
+        tmp_path (Path): Temporary path for pytest.
+    """
     with pytest.raises(FileNotFoundError):
         ExperimentSession(
             session_id = "pytest_session_invalid",
             ephys_data_path = tmp_path / 'ephys_data_path',
-            pose_data_path = tmp_dir / 'pose_data_path',
+            pose_data_path = tmp_path / 'pose_data_path',
             output_root_path = tmp_path,
             cfg = 'demo_session.yaml'
         )
