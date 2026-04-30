@@ -35,10 +35,11 @@ movement_df = pose.load_movement() # if enabled
 ### Inputs
 - Directory containing SLEAP `.h5` files for a recording session.
 - YAML configuration file defining preprocessing steps and pose-related parameters
+- Save path
 
 ### Outputs
-- `pose_data.csv` processed pose time series
-- `movement_events.pkl` (*optional*) extracted movement events
+- `pose_data.csv` &rarr; processed pose time series
+- `movement_events.pkl` &rarr; (*optional*) extracted movement events
 - Lightweight object for accessing results
 
 ## Additional utilities
