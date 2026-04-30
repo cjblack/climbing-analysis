@@ -1,3 +1,8 @@
+"""
+
+DEPRECATED - primarily replaced by neurokinematics.io
+
+"""
 from pathlib import Path
 import json
 import pandas as pd
