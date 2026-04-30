@@ -1,3 +1,10 @@
+""" 
+
+DEPRECATED - primarily moved to pose.io
+
+"""
+
+
 from scipy.interpolate import interp1d
 import numpy as np
 import pandas as pd
