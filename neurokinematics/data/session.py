@@ -100,6 +100,7 @@ class ExperimentSession:
         session.pose_cfg = cfg['configs']['pose']
         session.lfp_preprocessing_cfg = cfg['configs']['lfp']
         session.multimodal_cfg = cfg['configs']['multimodal']
+        session.sorting_cfg = cfg['configs']['spikes']
 
         session.metadata = cfg.get('session_metadata', {})
         if not session.metadata:
