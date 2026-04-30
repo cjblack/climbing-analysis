@@ -2,10 +2,15 @@
 High-level I/O for saving and loading.
 
 Contains simplified versions of storage operations to reduce overhead across code. 
-Keep this module to saveas/load of file various file formats, set config paths, and session directories.
+Keep this module to saveas/load of file various file formats, set config paths, session directories, and associated checks.
 
+config paths
 
-saveing
+validate
+- file existence
+- path existence
+
+saving
 - json
 - pandas dataframe -> csv
 
@@ -40,6 +45,51 @@ CFG_PATHS = {
     'session': CFG_ROOT_PATH / 'session_cfg'
 }
 
+
+### * validation * ###
+
+def _require_file(file_path: Path | str):
+    """Helper function to check if file for loading exists.
+
+    Args:
+        file_path (Path | str): File path to check.
+
+    Raises:
+        FileNotFoundError: Checks if file_path exists.
+        FileNotFoundError: Checks if file_path is a file.
+
+    Returns:
+        Path: Input file_path if it passes checks.
+    """
+    
+    file_path = Path(file_path) # turn into Path
+
+    # does this exist? check
+    if not file_path.exists():
+        raise FileNotFoundError(f"File does not exist: {file_path}")
+    # is this a file? check
+    if not file_path.is_file():
+        raise FileNotFoundError(f"Expected a file, got: {file_path}")
+    return file_path
+
+def _require_path(path: Path | str):
+    """Helper function to check if path exists.
+
+    Args:
+        path (Path | str): Input path to check.
+
+    Raises:
+        FileNotFoundError: Checks if path exists.
+
+    Returns:
+        Path: Returns path if it exists.
+    """
+    path = Path(path)
+    
+    # does this exist? check
+    if not path.exists():
+        raise FileNotFoundError(f"Path does not exist: {path}")
+    return path
 
 
 ### * directory * ###
@@ -120,11 +170,17 @@ def load_csv(file_path: str, method: str = 'pandas'):
     Returns:
         dataframe: Pandas or dask dataframe, depending on 'method' argument. Defaults to a pandas dataframe.
     """
+
+    file_path = _require_file(file_path)
+
     method = method.lower()
     if method == 'pandas':
         df = pd.read_csv(file_path)
     elif method == 'dask':
         df = dd.read_csv(file_path)
+    else:
+        raise ValueError("method must be 'pandas' or 'dask'.")
+    
     return df
 
 def load_json(file_path: str):
@@ -136,6 +192,7 @@ def load_json(file_path: str):
     Returns:
         dict: Dictionary containing data from loaded .json file.
     """
+    file_path = _require_file(file_path)
     with open(file_path, "r") as f:
         data = json.load(f)
     return data
@@ -168,32 +225,58 @@ def load_memmap(file_path: str, shape: tuple, dtype: str ="float32", mode: str =
     Returns:
         memmap (np.ndarray): Returns the memory mapped object of the data stored on disk.
     """
+
+    file_path = _require_file(file_path)
+
     return np.memmap(file_path, dtype=dtype, mode=mode, shape=tuple(shape))
 
 def load_pickle(filename: str, method: str = 'default'):
-    
+    """Loads pickled data.
+
+    Args:
+        filename (str): Name of file to load, must end in `.pkl`
+        method (str, optional): Method to load data with. Options are 'default' or 'pandas'. Defaults to 'default'.
+
+    Returns:
+        data (dict | dataframe): Returns data as a dictionary or a dataframe.
+    """
+
+    # check file exists
+    file_path = _require_file(filename)
     method = method.lower()
     if method == 'default':
-        with open(filename, "rb") as f:  # "rb" = read binary
+        with open(file_path, "rb") as f:  # "rb" = read binary
             data = pickle.load(f)
     elif method == 'pandas':
-        data = pd.read_pickle(filename)
+        data = pd.read_pickle(file_path)
+    else:
+        raise ValueError("method must be 'default' or 'pandas'.")
     #elif method == 'dask':
     #    data = dd.read_pickle(filename)
     return data
 
-def load_config(filename: str, config_type: str | None = None):
+def load_config(filename: Path | str, config_type: str | None = None):
     """Load yaml files as dictionaries.
 
     Args:
-        filename (str): Config file name ending in '.yaml'
+        filename (Path | str): Config file name ending in '.yaml'
         config_type (str | None, optional): Type of config file, simplify accessing config folders. Options: 'pose', 'multimodal', 'spike', None. If None, it will only load the config file if the full path to the file is provided. Defaults to None.
 
     Returns:
         _type_: _description_
     """
-    if type(config_type) == str:
-        filename = CFG_PATHS[config_type] / filename
-    with open(filename, "r") as f:
+    if config_type is not None:
+        if config_type not in CFG_PATHS:
+            valid_ops = ", ".join(CFG_PATHS)
+            raise ValueError(f"Invalid config_type '{config_type}'. Valid options are: {valid_ops}")
+        
+        file_path = CFG_PATHS[config_type] / filename
+
+    file_path = _require_file(file_path)
+
+    #if type(config_type) == str:
+    #    filename = CFG_PATHS[config_type] / filename
+    with open(file_path, "r") as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
+    
     return config
