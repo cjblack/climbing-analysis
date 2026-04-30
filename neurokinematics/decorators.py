@@ -1,3 +1,7 @@
+""" 
+Simple decorator function for neurokinematics/data/session.py
+"""
+
 from functools import wraps
 
 def log_call(label=None, type='run'):
@@ -6,13 +10,13 @@ def log_call(label=None, type='run'):
         def wrapper(*args, **kwargs):
             name = label or func.__qual__name__
             if type == 'run':
-                func_type = 'RUNNING:'
+                func_type = 'Running:'
             elif type == 'load':
-                func_type = 'LOADING:'
+                func_type = 'Loading:'
             elif type == 'process':
-                func_type = 'PROCESSING.'
+                func_type = 'Processing.'
             elif type=='plot':
-                func_type = 'PLOTTING:'
+                func_type = 'Ploting:'
             print(f'{func_type} {name}...')
             result = func(*args, **kwargs)
             print('FINISHED.')
