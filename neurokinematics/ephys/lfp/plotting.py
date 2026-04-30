@@ -17,14 +17,15 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
         channels (list): List of channels to plot.
         movement_plot_params (dict): Dictionary determining the plot, includes:
             {
-                'node': 'node', # required - sets node for alignment
-                'movement_event': 'movement_event', # required - sets movement event to align to
-                'cmap': 'colormap', # optional - sets color of averages for plotting, defaults to 'black'
-                'baseline_correct': False, # optional - sets whether evoked responses are baseline corrected (basline subtraction between 0.5-0.1 pre event) 
-                'smooth': False, # optional - sets whether to smooth the averaged erp, if True, will use gaussian filtering with a sigma of 5 samples.
-                'vertical_shift': 10 # optional - sets y-scale shift factor in the event of plotting multiple channels so traces don't overlap, optional - defaults to 10
+                'node': str, # required - sets node for alignment
+                'movement_event': str, # required - sets movement event to align to
+                'cmap': str, # optional - sets color of averages for plotting, defaults to 'black'
+                'xlims': tuple, # contains xlim vals, defaults to (-0.5, 0.5)
+                'baseline_correct': bool, # optional - sets whether evoked responses are baseline corrected (basline subtraction between 0.5-0.1 pre event) 
+                'smooth': bool, # optional - sets whether to smooth the averaged erp, if True, will use gaussian filtering with a sigma of 5 samples.
+                'vertical_shift': float # optional - sets y-scale shift factor in the event of plotting multiple channels so traces don't overlap, optional - defaults to 10
             }
-        save_path (Path | str | None, optional): Path to folder for saving plots to. If set, saves as `.png` to output folder. Defaults to None.
+        save_path (Path | str | None, optional): Path to folder for saving plots to. If set, saves as .png to output folder. Defaults to None.
 
     Example:
         >>> plot_movement_erps_probe(
@@ -36,7 +37,7 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
         ...         'baseline_correct': True,
         ...         'smooth': True,
         ...         }
-        ...     )
+        ... )
     """
 
     node = movement_plot_params['node']
