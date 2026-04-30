@@ -41,3 +41,6 @@ aws/
 # environments
 environment.yml
 environment_redux.yml
+
+# deprecated
+/neurokinematics/multi_modal/utils.py
