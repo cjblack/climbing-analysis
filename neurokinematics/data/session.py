@@ -1,3 +1,36 @@
+"""Session management and workflow orchestration for neurokinematics.
+
+This module provides the core class, which serves as a high-level interface for organising, preprocessing, and aligning electrophysiology and markerless pose data within a single experimental session.
+
+The session object encapsulates:
+    - Session configuration and metadata
+    - Creation and loading of reproducible analysis sessions
+    - Pose preprocessing
+    - Spike sorting and LFP preprocessing
+    - Video-ephys synchronization
+    - Neural alignment to movement data
+    - Event based epoching of neural signals
+
+The goal of this module is to provide a consistent, config-based API for multimodal behavioural neuroscience workflows, while preserving reproducibility.
+
+Current implementation
+----------------------
+The current implementation provides a general-purpose ExperimentSession class designed around the experimental pipelines used during development:
+    - Open Ephys acquisition
+    - Cambridge Neurotech probes
+    - SLEAP-based pose estimation
+
+Future development
+------------------
+Experiment-specific session subclasses for specialised workflows, for example:
+    - ClimbingSession --> Naturalistic Climbing Behaviour
+    - LocomotionSession --> Treadmill running/walking
+    - OpenFieldSession --> Open field tasks
+
+These classes will extend the base session interface with experiment-specific preprocessing, alignment, and analysis routes.
+
+"""
+
 from pathlib import Path
 import shutil
 import xmltodict
