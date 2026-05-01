@@ -19,6 +19,7 @@ neurokinematics/
 ```
 
 ## Main session config
+
 The main session config points to separate sub-config files for spike sorting, LFP preprocessing, pose processing, and alignment:
 
 Example:
@@ -65,6 +66,8 @@ pipeline:
 
 ## Spike config
 
+The spike config contains information relevant to running spike sorting and accessing spike data:
+
 ```yaml
 name: "sample_spike_sorting_cfg"
 rec_type: "openephys"
@@ -86,8 +89,21 @@ stream_name: "Record Node 109#Acquisition_Board-100.acquisition_board-B"
 sample_rate: 30000.
 
 ```
+### Fields
+- `name` &rarr; config name (superfluous)
+- `rec_type` &rarr; acquisition system used for ephys (redundant in session config)
+- `sorter` &rarr; spike sorter used
+- `to_compute` &rarr; list of SpikeInterface arguments and parameters to compute on sorted units
+- `probe_manufacturer` &rarr; probe manufacturer, used for identifying probe map
+- `probe_id` &rarr; id of probe used in recording, used to set geometries
+- `group_mode` &rarr; group mode for sorting across probes
+- `channel_map` &rarr; channel map to use for spike sorting, user defined
+- `stream_name` &rarr; stream name for spike data, used to run sorting
+- `sample_rate` &rarr; sample rate of recording
 
 ## Pose config
+
+The pose config has data relevant for extracting and preprocessing pose data:
 
 ```yaml
 # Simple preprocessing config file, only fills missing vals
@@ -121,7 +137,22 @@ movement_detection:
     - 'l_hindpaw'
 ```
 
+### Fields
+- `pose_format.pose_type` &rarr; software used for markerless pose estimation
+- `pose_format.file_format` &rarr; file format of pose data
+- `pose_format.frame_rate` &rarr; frame rate of camera used in original data collection
+- `pose_preprocessing.fill_missing` &rarr; boolean to determine filling of NaN values in pose estimation
+- `pose_preprocessing.confidence` &rarr; argument and parameters to filter data by confidence scores
+- `pose_preprocessing.velocity` &rarr; argument and parameters to filter data by velocity
+- `post_processing.storage_format` &rarr; desired format to store data at (currently only supporting csv)
+- `movement_detection.enabled` &rarr; sets whether movement detection will be performed
+- `movement_detection.sort_cols` &rarr; sorting columns for organising pose estimation data to sort by
+- `movement_detection.group_cols` &rarr; grouping columns for organising pose estimation data by group
+- `movement_detection.node_list` &rarr; list of tracked nodes for performing movement detection on (defined by user and pose estimation run)
+
 ## LFP config
+
+The LFP config has details relevant to extracting Open Ephys data for preprocessing and storage steps:
 
 ```yaml
 # set all the high-level informaiton for preprocessing lfp
@@ -138,7 +169,21 @@ downsample_rate: 1000.0
 storage_format: "zarr"
 ```
 
+### Fields
+- `name` &rarr; name of config file (superfluous)
+- `dtype` &rarr; data type for storing processed LFP
+- `chunking.chunk_duration_s` &rarr; duration in seconds to chunk LFP data
+- `chunking.pad_duration_s` &rarr; pad duration in seconds to add to LFP data during chunking
+- `filters.notch` &rarr; frequency in Hz of notch filter setting
+- `filters.badnpass` &rarr; tuple containing low and high pass settings for bandpass filter
+- `filters.quality` &rarr; float value for quality setting on filter
+- `downsample_rate` &rarr; frequency in Hz to downsample data to
+- `storage_format` &rarr; format to use for storing data (unused and defaults to zarr regardless, this will be updated in the future)
+
 ## Multimodal config
+
+The multimodal config has details regarding alignment between markerless pose and ephys data:
+
 ```yaml
 # Sample config for camera alignment
 name: "camera_alignment_cfg"
@@ -156,3 +201,16 @@ detection_settings:
   minimum_bout_duration: 0.1
   bandwidth: 40.
 ```
+
+### Fields
+
+- `name` &rarr; name of config (superfluous)
+- `camera.manufacturer` &rarr; name of camera manufacturer for metadata
+- `camera.model` &rarr; name of camera model used in recording video data
+- `acquisition_settings.record_node` &rarr; record node index of Open Ephys channel where strobe was recorded
+- `acquisition_settings.record_index` &rarr; index of recording in Open Ephys data where strobe was recorded
+- `acquisition_settings.event_channel` &rarr; analog channel id where camera strobe output was recorded
+- `detection_settings.fps` &rarr; camera frame rate, used in detecting frame captures in ephys (redundant)
+- `detection_settings.threshold_ratio` &rarr; threshold ratio used in detecting frame capture in ephys
+- `detection_settings.minimum_bout_duration` &rarr; minimum bout duration for identifying a purposeful video recording
+- `detection_settings.bandwidth` &rarr; bandwidth in Hz for filter used to identify strobe on analog channel

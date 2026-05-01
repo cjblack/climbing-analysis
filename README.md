@@ -69,6 +69,7 @@ neurokinematics/
 - [LFP processing](docs/lfp.md)
 - [Multi-modal](docs/multi_modal.md)
 - [Data](docs/data.md)
+- [Configs](configs/README.md)
 - [In development](docs/development.md)
 
 ## Examples
