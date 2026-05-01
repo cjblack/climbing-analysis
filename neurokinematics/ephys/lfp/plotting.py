@@ -40,6 +40,7 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
         ... )
     """
 
+    # run through movement_plot_params to extract parameters - this is a suboptimal implementation
     node = movement_plot_params['node']
     movement_event = movement_plot_params['movement_event']
 
@@ -83,17 +84,21 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
     time = root["time"][:]
     channel_ids = root["channels"][:]
 
+    # check for any invalid entries - this check may be superfluous as all epochs should be valid within the file
     epochs = epochs[valid]
     if not isinstance(channels, list):
         channels = list(channels)
     
+    # check and run baseline correction
     if bl_corr:
         baseline_correct = time < -0.1
         baseline = np.nanmean(epochs[:, :, baseline_correct], axis=2, keepdims=True)
         epochs = epochs - baseline
 
+    # average erps across trials - currently runs all trials, future implementation will add filtering
     erp = np.nanmean(epochs, axis=0)
 
+    # check and run smoothing for visualisation
     if erp_smooth:
         sigma_samples = 5
         sigma_samples = sigma_ms / 1000 * fs
@@ -103,8 +108,10 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
             axis=1
         )
     
+    # create plots
     fig, ax = plt.subplots(figsize=(4,10))
     
+    # plot channels shifted along the y-axis
     for i, chan in enumerate(channels):
         ax.plot(time, erp[chan,:]+(vertical_shift*i), color = cmap(i/len(channels)), linewidth=2, label=f'chan {chan}')
     plt.xlim(xlims[0],xlims[1])
@@ -115,6 +122,7 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
     plt.legend(loc = 'lower right', fontsize='xx-small')
     plt.tight_layout()
 
+    # if saving...
     if save_path:
         plots_dir = Path(save_path) / 'lfp_plots'
         plots_dir.mkdir(parents=True, exist_ok=True)
