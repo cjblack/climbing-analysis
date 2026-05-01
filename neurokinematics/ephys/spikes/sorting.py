@@ -1,5 +1,10 @@
 """Interface for simplifying spike sorting.
 
+Leverages SpikeInterfaces spike sorting functionality to simplify spike sorting and data storage with a pre-defined configuration file.
+
+Currently tested with kilosort4 and Cambridge Neurotech silicon probes.
+
+Upcoming tests for Neuropixels recordings.
 
 """
 
@@ -27,8 +32,11 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
         probe: Probe information from recording. This is based on the spike_cfg used
         analyzer: Spikeinterface analyzer object.
 
-    Usage:
-        sorting, recording, probe, analyzer = sort('path/to/datafolder', cfg_file='cfg_file.yaml')
+    Example:
+        >>> sorter, recording, probe, analyzer = sort(
+        ...     data_path = 'path/to/folder/containing/oebin',
+        ...     cfg_file = 'spike_sorting_cfg.yaml'
+        ...     )
     """
     # Load sorting params
     sorting_cfg = get_sorting_cfg(cfg_file)
