@@ -59,7 +59,7 @@ neurokinematics/
 ├── configs/                    # YAML configuration files
 ├── docs/                       # Extended documentation/example figures
 ├── tests/                      # Unit and integration tests
-├── examples/                   # Example workflows
+├── examples/                   # Example workflow scripts
 └── notebooks/                  # Jupyter demos
 ```
 
@@ -70,6 +70,63 @@ neurokinematics/
 - [Multi-modal](docs/multi_modal.md)
 - [Data](docs/data.md)
 
+## Examples
+
+Example scripts are provided in `examples/`, and example datasets are published on OSF: https://doi.org/10.17605/OSF.IO/3SR67
+
+**Not all data is required for example scripts.**
+
+
+### Quick start (minimal pose-only)
+Only the sample pose data from the OSF repository is required for this example.
+- `pose_data` ~3.3MB
+
+Run:
+
+```bash
+python examples/run_pose_example.py
+```
+This example shows:
+- Pose preprocessing
+- Movement event extraction
+
+#### Reload
+Requires `run_pose_example.py` to be called first. Similarly only uses pose data.
+
+Run:
+
+```bash
+python examples/run_load_existing_session.py
+```
+This example shows:
+- Loading a previously created session
+- Log call for re-running analysis
+
+### Full multi-modal
+
+This example reproduces the full processing pipeline used during development and requires both pose and ephys datasets.
+- `pose_data` ~3.3MB
+- `ephys_data` ~8.5GB
+
+> **Note:** the electrophysiology dataset is distributed as individual files on OSF.
+> If any files appear to be missing, corrputed, or fail during testing,
+> please open an issue on
+> https://github.com/cjblack/neurokinematics/issues
+> or leave a comment on the OSF project page
+
+Run:
+
+```bash
+python examples/run_session_pipeline.py
+```
+
+This example shows:
+- Pose preprocessing
+- Spike sorting
+- LFP preprocessing
+- Pose processing
+- Video-ephys alignment
+- Movement-ephys alignment
 
 ## Scope and current support
 
