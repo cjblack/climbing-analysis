@@ -1,48 +1,38 @@
 """ 
-Simple decorator function for neurokinematics/data/session.py
+Simple decorator function for neurokinematics/data/session.py to provide output
 """
 
 from functools import wraps
 
-# def log_call(label=None, type='run'):
-#     def decorator(func):
-#         @wraps(func)
-#         def wrapper(*args, **kwargs):
-#             name = label or func.__qual__name__
-#             if type == 'run':
-#                 func_type = 'Running:'
-#             elif type == 'load':
-#                 func_type = 'Loading:'
-#             elif type == 'process':
-#                 func_type = 'Processing.'
-#             elif type=='plot':
-#                 func_type = 'Ploting:'
-#             print(f'{func_type} {name}...')
-#             result = func(*args, **kwargs)
-#             print('FINISHED.')
-#             return result
-#         return wrapper
-#     return decorator
+BOLD = "\033[1m"
+DIM = "\033[2m"
+
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+GREEN = "\033[92m"
+
+RESET = "\033[0m"
+
 
 def log_call(label=None, type='run'):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            
-            name = label or func.__qual__name
+
+            name = label or func.__qualname__
 
             labels = {
-                'run': 'Running:',
-                'load': 'Loading:',
-                'process': 'Processing:',
-                'plot': 'Plotting:'
+                'run': 'RUNNING:',
+                'load': 'LOADING:',
+                'process': 'PROCESSING:',
+                'plot': 'PLOTTING:'
             }
-            print(f"{labels.get(type, 'Running:')} {name}...")
+            print(f"\n{BOLD}{labels.get(type, 'RUNNING:')}{RESET} {name}...\n")
 
             result = func(*args, **kwargs)
-            if isinstance(result, dict) and "status" in result:
-                if result['status'] == 'exists':
-                    print(f"STATUS: output already exists at {result['path']}. Use 'overwrite' mode to overwrite.")
+            if isinstance(result, dict) and "exists" in result:
+                if result['exists']:
+                    print(f"{YELLOW}{BOLD}PROCESS SKIPPED{RESET}: \n    Output already exists at {GREEN}{result['path']}{RESET}.\n    Use {DIM}'overwrite'{RESET} mode to overwrite output.")
             else:
                 print('Finished.')
             return result
