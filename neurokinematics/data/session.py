@@ -265,7 +265,7 @@ class ExperimentSession:
         should_run = self._handle_existing_output(expected_output, mode)
 
         if not should_run:
-            return expected_output
+            return {"exists": True, "path": expected_output}
         
         self.pose_processed = process_sleap(
             data_path = self.pose_data_path,
@@ -291,7 +291,7 @@ class ExperimentSession:
         should_run = self._handle_existing_output(expected_output, mode)
 
         if not should_run:
-            return expected_output
+            return {"exists": True, "path": expected_output}
 
         self.sorter, self.recording, self.probe, self.analyzer = sort(
             data_path = self.ephys_data_path,
@@ -316,7 +316,7 @@ class ExperimentSession:
         should_run = self._handle_existing_output(expected_output, mode)
 
         if not should_run:
-            return expected_output
+            return {"exists": True, "path": expected_output}
 
         if self.cfg['session']['ephys']['acquisition'] == 'openephys':
             self.lfp_processed = preprocess_lfp(
@@ -351,7 +351,7 @@ class ExperimentSession:
         should_run = self._handle_existing_output(expected_output, mode)
 
         if not should_run:
-            return expected_output
+            return {"exists": True, "path": expected_output}
 
         _, _, _, _, _ = get_camera_events(
             directory = self.ephys_data_path,
@@ -391,7 +391,7 @@ class ExperimentSession:
         expected_output = self.dirs['alignment'] / 'movement_event_alignment.csv'
         should_run = self._handle_existing_output(expected_output, mode)
         if not should_run:
-            return expected_output
+            return {"exists": True, "path": expected_output}
         
         # set alignment dirs - 'events' dir is redundant, remove in future updates
         dirs_for_alignment = {
@@ -433,7 +433,7 @@ class ExperimentSession:
         expected_output = self.dirs['lfp'] / 'lfp_epoched'
         should_run = self._handle_existing_output(expected_output, mode)
         if not should_run:
-            return expected_output
+            return {"exists": True, "path": expected_output}
         
         self.epoch_lfp_root = get_movement_aligned_erps(
             alignment = self.dirs['alignment'] / 'movement_event_alignment.csv',
@@ -458,7 +458,7 @@ class ExperimentSession:
         missing = [p for p in required if not p.exists()]
         if missing:
             raise FileNotFoundError(
-                "Cannot epoch LFP. Missing required files:\n"
+                "Cannot epoch spikes. Missing required files:\n"
                 + "\n".join(str(p) for p in missing)
             )
 
@@ -466,9 +466,9 @@ class ExperimentSession:
         expected_output = self.dirs['spikes'] / 'rasters' / 'movement_aligned_rasters.pkl'
         should_run = self._handle_existing_output(expected_output, mode)
         if not should_run:
-            return expected_output
+            return {"exists": True, "path": expected_output}
         
-        self.sorter = load_phy_sorting(self.dir['spikes'] / self.spike_sorting_method)
+        self.sorter = load_phy_sorting(self.dir['spikes'] / self.spike_sorter)
         self.spike_raster_obj = get_movement_aligned_rasters(
             alignment = self.dirs['alignment'] / 'movement_event_alignment.csv',
             sorter = self.sorter,
