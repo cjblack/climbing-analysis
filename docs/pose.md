@@ -15,6 +15,18 @@ It is designed to standardise pose data across sessions and optionally derive mo
 - `io.py` &rarr; input/output helpers for loading and saving pose-related data
 
 
+> **Note:** currently, sleap files need to have a specific naming convention for parsing file content.
+>
+> the convention is `<subj_id>_<experiment_type>_<YYYYMMDD>_<TN>.h5`
+> where: 
+>> - subj_id = the subject id
+>> - experiment_type = type of experiment run
+>> - YYYMMDD = date format
+>> - TN = T represents 'trial', N represents trial number
+> 
+>
+>The format itself has no bearing on the actual data, but is used for organisational purposes in function calls, so other formats will raise issues. Future updates will optimising the naming convention to be more modular across experiments.
+
 ## Process SLEAP files
 ```python
 from neurokinematics.pose.preprocessing.base import process_sleap
