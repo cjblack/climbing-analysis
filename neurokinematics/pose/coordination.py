@@ -1,7 +1,8 @@
 """Module for computing coordination metrics.
 
-This module mainly calculates phase offset, but will be expanded in the future to incorporate temporal overlap metrics and stability measures.
+This module is designed for analyses that examine coordination between node pairs from markerless pose estimation.
 
+Currently, this module support the phase offset metric, but will be expanded in the future to incorporate temporal overlap metrics and stability measures.
 """
 
 
@@ -15,14 +16,18 @@ def compute_phase_offset_pairs(pose_df: pd.DataFrame, stance_df: pd.DataFrame, n
 
     Args:
         pose_df (pd.DataFrame): Dataframe containing pose data from trial/session
-        stance_df (pd.DataFrame): Dataframe containing stance data from corresponding trial/session markerless pose data
+        stance_df (pd.DataFrame): Dataframe containing movement event data from corresponding trial/session markerless pose data (saved as `movement_events.pkl`)
         node_pairs (list): List of tuples containing node pairs to compute phase offset between.
 
     Returns:
         phase_offset (dict): Dictionary containing the phase offset information for each coordinated movement between node pairs.
 
-    Usage:
-        poff = compute_phase_offset_pairs(pose_df, stance_df, [('left_arm', 'right_arm'), ('left_leg', 'right_leg')]) # make sure to use appropriate node names from pose estimation files.
+    Example:
+        >>> poff = compute_phase_offset_pairs(
+        ...     pose_df = pose_df,
+        ...     stance_df = stance_df,
+        ...     node_pairs = [('node1', 'node2'), ('node3', 'node4')]
+        ...     )
     """
 
     # organise pose
@@ -39,6 +44,7 @@ def compute_phase_offset_pairs(pose_df: pd.DataFrame, stance_df: pd.DataFrame, n
         phase_offset[npair]['locs'] = []
         phase_offset[npair]['movement_ratio'] = []
         phase_offset[npair]['max_speed'] = []
+
         for df_id, ((date_, trial_), df) in enumerate(pose_group):
             phase_offsets = [] # create an empty list to fill with all phase offset values
             movement_ratio = []
