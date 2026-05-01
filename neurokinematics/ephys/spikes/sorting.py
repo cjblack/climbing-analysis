@@ -1,6 +1,6 @@
 """Interface for simplifying spike sorting.
 
-Leverages SpikeInterfaces spike sorting functionality to simplify spike sorting and data storage with a pre-defined configuration file.
+Leverages SpikeInterfaces spike sorting functionality to simplify spike sorting and data storage with a pre-defined configuration file (configs/spk_sorting_cfg).
 
 Currently tested with kilosort4 and Cambridge Neurotech silicon probes.
 
