@@ -1,3 +1,15 @@
+"""Module for extracting movement events from pose data.
+
+Currently this module supports extraction of starting and stopping of discrete events (i.e. stance->swing transitions) using a velocity thresholding approach.
+
+The main function, `extract_movements` was designed specifically for use with naturalistic, freely-moving climbing. Therefore, implementation with other motor behaviours may require titrating parametrs.
+
+Future updates will include 
+    - Config files to simplify call/reproduce workflows
+    - Additional methods for extracting movement features from different behaviour types
+
+"""
+
 from pathlib import Path
 
 from scipy.signal import find_peaks
@@ -20,6 +32,12 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
 
     Returns:
         pd.DataFrame: Pandas DataFrame containing start, stop, and maximum velocity indices for each node.
+
+    Example:
+        >>> movements_df = extract_movements(
+        ...     df = pose_df,
+        ...     node_list = ['node1', 'node2', 'node3', 'node4'],
+        ...     )
     """
 
     stances = dict()
