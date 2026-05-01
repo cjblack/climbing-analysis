@@ -2,7 +2,7 @@
 Batch preprocessing markerless pose estimation data.
 
 This module provides utilties for loading, preprocessing, and saving pose data from markerless pose-estimation pipelines.
-It is currently only tested with SLEAP data converted to the '.h5' format. DLC and other pose estimation models, and file formats are will be developed in the future.
+Current testing has only been performed with SLEAP data converted to the '.h5' format. DLC and other pose estimation models, and file formats will be tested in the future.
 
 Main function, `process_sleap`, loads pose files from a single directory, applies pre-defined preprocessing of pose data, and optionally extracts movement events. 
 
