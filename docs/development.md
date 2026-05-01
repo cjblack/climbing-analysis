@@ -1,18 +1,24 @@
 ## In development 
+
+The modules described here are **experimental** and currently under active development.
+
+They are tested locally and used during ongoing development of `neurokinematics`, but their APIs, configuration files, and output formats are subject to change.
+
 ### datajoint workflows
-Experimental workflow ingests recording session into DataJoint pipeline. Currently handles registration and data structuring. Signal processing steps are not yet included.
+
+Experimental workflows for integrating recording sessions into a database using DataJoint.
 
 Requires a `.env` file with database connection details.
 
-#### Terminal example
+#### Command line example
 
 ```shell
-python workflows.process_session "path/to/datafolder"
+python datajoint_workflow.process_session "path/to/datafolder"
 ```
 
 #### Python example
 ```python
-from workflows.process_session import run
+from datajoint_workflow.process_session import run
 data_path = "path/to/datafolder"
 run(data_path)
 ```

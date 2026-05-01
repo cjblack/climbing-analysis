@@ -69,6 +69,7 @@ neurokinematics/
 - [LFP processing](docs/lfp.md)
 - [Multi-modal](docs/multi_modal.md)
 - [Data](docs/data.md)
+- [In development](docs/development.md)
 
 ## Examples
 
@@ -83,7 +84,7 @@ Only the sample pose data from the OSF repository is required for this example.
 
 Run:
 
-```bash
+```shell
 python examples/run_pose_example.py
 ```
 This example shows:
@@ -95,7 +96,7 @@ Requires `run_pose_example.py` to be called first. Similarly only uses pose data
 
 Run:
 
-```bash
+```shell
 python examples/run_load_existing_session.py
 ```
 This example shows:
@@ -116,7 +117,7 @@ This example reproduces the full processing pipeline used during development and
 
 Run:
 
-```bash
+```shell
 python examples/run_session_pipeline.py
 ```
 
