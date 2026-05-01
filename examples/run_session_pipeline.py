@@ -6,6 +6,12 @@ This script demonstrates how to create an ExperimentSession, run selected proces
 Before running:
     1. Create and activate conda environment
     2. Ensure all sample data from (https://doi.org/10.17605/OSF.IO/3SR67) exists in examples/sample_data/
+    3. If you encounter missing files, corrupted recordings, or issues reproducing the ephys analysis, please open an issue on github or leave a comment on the OSF project page.
+
+Github issues:
+    - https://github.com/cjblack/neurokinematics/issues
+OSF:
+    - https://osf.io/3sr67/overview
 
 """
 
