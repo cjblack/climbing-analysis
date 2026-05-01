@@ -1,5 +1,5 @@
 """ 
-Simple decorator function for neurokinematics/data/session.py to provide output
+Simple decorator function for neurokinematics/data/session.py to provide output on function calls.
 """
 
 from functools import wraps
