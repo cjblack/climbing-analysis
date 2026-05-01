@@ -1,0 +1,1 @@
+Placeholder folder for pose-only examples where ephys processing is not required but path is.
