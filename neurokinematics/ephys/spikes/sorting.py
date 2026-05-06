@@ -12,6 +12,8 @@ from pathlib import Path
 from spikeinterface import create_sorting_analyzer
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.sorters import run_sorter
+from spikeinterface.qualitymetrics import compute_quality_metrics
+from neurokinematics.io import save_dataframe
 from neurokinematics.ephys.io import *
 from neurokinematics.ephys.utils import create_probe
 
@@ -49,6 +51,7 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
     channel_map = sorting_cfg['channel_map']
     stream_name = sorting_cfg['stream_name']
     to_compute = sorting_cfg['to_compute']
+    quality_metrics = sorting_cfg['quality_metrics']
     
     data_path = Path(data_path) # windows path
     if save_path:
@@ -56,11 +59,14 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
         output_folder = save_path / sorter # when spikeinterface runs kilosort4, this folder will be created
         recording_path = save_path / sorter / 'recording.dat'
         phy_folder = save_path / sorter / 'phy_output'
+        qual_metrics_path = save_path / 'spike_qc_metrics.csv'
     else:
         save_path = Path(data_path)
         output_folder = save_path / sorter # set output folder for kilosort
         recording_path = save_path / sorter / 'recording.dat'
         phy_folder = save_path / sorter / 'phy_output'
+        qual_metrics_path = save_path / 'spike_qc_metrics.csv'
+
 
     recording = read_data(data_path=Path(data_path), rec_type=rec_type, stream_name=stream_name)
     probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
@@ -71,11 +77,12 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
 
     # save recording as binary format to kilosort4 folder
     recording.save_to_folder(data_path=recording_path) # might not need to run this step...**
-    analyzer = sorting_analyzer(sorting, recording, data_path, compute_dict = to_compute, save_path = save_path) # create sorting analyzer
+    analyzer, metrics = sorting_analyzer(sorting, recording, data_path, compute_dict = to_compute, quality_metrics = quality_metrics, save_path = save_path) # create sorting analyzer
+    save_dataframe(metrics, qual_metrics_path, storage_format='csv') # save quality metrics
     export_to_phy(analyzer, output_folder=phy_folder) # export to phy for visualization
-    return sorting, recording, probe, analyzer
+    return sorting, recording, probe, analyzer, metrics
 
-def sorting_analyzer(sorting, recording, data_path, compute_dict: dict, save_path: Path | str | None = None):
+def sorting_analyzer(sorting, recording, data_path, compute_dict: dict, quality_metrics: list, save_path: Path | str | None = None):
     """
     Create sorting analyzer
     """
@@ -87,4 +94,5 @@ def sorting_analyzer(sorting, recording, data_path, compute_dict: dict, save_pat
     analyzer.compute(compute_dict)#(['random_spikes', 'waveforms', 'templates', 'noise_levels', 'spike_locations'])
     _ = analyzer.compute('spike_amplitudes')
     _ = analyzer.compute('principal_components', n_components=5, mode="by_channel_local")
-    return analyzer
+    metrics = compute_quality_metrics(analyzer, metric_names = quality_metrics)
+    return analyzer, metrics
