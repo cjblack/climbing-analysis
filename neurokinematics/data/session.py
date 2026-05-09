@@ -46,13 +46,16 @@ from neurokinematics.io import create_session_dirs
 # pose
 from neurokinematics.pose.preprocessing.base import process_sleap
 from neurokinematics.pose.io import load_df_list, load_pickle
+from neurokinematics.pose.plotting import plot_phase_offset_pairs
 
 # ephys
 from neurokinematics.ephys.io import *
 from neurokinematics.ephys.spikes.sorting import sort
 from neurokinematics.ephys.spikes.rasters import get_movement_aligned_rasters
+from neurokinematics.ephys.spikes.plotting import plot_movement_psth, plot_waveforms
 from neurokinematics.ephys.lfp.preprocessing import preprocess_lfp
 from neurokinematics.ephys.lfp.epochs import get_movement_aligned_erps
+from neurokinematics.ephys.lfp.plotting import plot_movement_erps_probe
 
 # multimodal
 from neurokinematics.multi_modal.alignment import get_camera_events, align_movements_to_ephys
@@ -326,7 +329,7 @@ class ExperimentSession:
         if not should_run:
             return {"exists": True, "path": expected_output}
 
-        self.sorter, self.recording, self.probe, self.analyzer = sort(
+        self.sorter, self.recording, self.probe, self.analyzer, self.spike_qc_metrics = sort(
             data_path = self.ephys_data_path,
             cfg_file = self.cfg['configs']['spikes'],
             save_path = self.dirs['spikes']
@@ -507,6 +510,26 @@ class ExperimentSession:
             sorter = self.sorter,
             save_path = self.dirs['spikes']
         )
+
+    def plot_spikes(self, unit_ids, plot_params, save_plots: bool = False):
+
+        required = [
+            self.dirs['spikes'] / 'movement_aligned_rasters.pkl'
+        ] 
+
+        missing = [p for p in required if not p.exists()]
+        if missing:
+            raise FileNotFoundError(
+                "Cannot plot spikes. Missing required files:\n"
+                + "\n".join(str(p) for p in missing)
+            )
+        
+        rasters_df = load_pickle(self.dirs['spikes'] / 'movement_aligned_rasters.pkl', method = 'pandas')
+
+        if save_plots:
+            plot_movement_psth(rasters_df, unit_ids, plot_params, self.dirs['plots'])
+        else:
+            plot_movement_psth(rasters_df, unit_ids, plot_params)
     
     @property
     def ephys_sample_rate(self):
