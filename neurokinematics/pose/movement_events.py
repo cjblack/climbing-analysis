@@ -16,6 +16,7 @@ from scipy.signal import find_peaks
 import pandas as pd
 import dask
 import numpy as np
+import xarray as xr
 
 #from neurokinematics.pose.utils import load_df_list
 from neurokinematics.pose.io import load_df_list
@@ -41,6 +42,7 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
     """
 
     stances = dict()
+    movement_array = dict()
     trial_ = df['Trial'].min()#int(df.attrs['Trial'].split('T')[-1])
     date_ = df['Date'].min()
     for i, node in enumerate(node_list):
@@ -52,11 +54,15 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
         start_ = []
         end_ = []
         max_ = []
+        # x_ = dict()
+        # y_ = dict()
         for idxs in range(len(start_end)):
             start_.append(start_end[idxs][0])
             end_.append(start_end[idxs][1])
             max_.append(start_end[idxs][0]+np.argmax(y_diff[start_end[idxs][0]:start_end[idxs][1]]))
-
+            node_array = np.zeros()
+            # for nd in node_list:
+            #     node_array = 
         stances[node]={'start':start_,'end':end_, 'max':max_}
     stances['trial'] = trial_
     stances['date'] = date_

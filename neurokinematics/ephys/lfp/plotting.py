@@ -5,6 +5,7 @@ Contains functions that primarily perform plotting, with some minimal signal ana
 
 from pathlib import Path
 import zarr
+import numpy as np
 
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
@@ -101,7 +102,7 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
     # check and run smoothing for visualisation
     if erp_smooth:
         sigma_samples = 5
-        sigma_samples = sigma_ms / 1000 * fs
+        #sigma_samples = sigma_ms / 1000 * fs
         erp = gaussian_filter1d(
             erp,
             sigma = sigma_samples,
@@ -127,6 +128,8 @@ def plot_movement_erps_probe(epoch_path: Path | str, channels: list, movement_pl
         plots_dir = Path(save_path) / 'lfp_plots'
         plots_dir.mkdir(parents=True, exist_ok=True)
         plot_path = plots_dir / f'{node}_{movement_event}_average_erp_across_chans.png'
+        plot_path_pdf = plots_dir / f'{node}_{movement_event}_average_erp_across_chans.pdf'
         plt.savefig(plot_path.as_posix()) # save figure to analyzer path
+        plt.savefig(plot_path_pdf.as_posix())
 
     plt.show()
