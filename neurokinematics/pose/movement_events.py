@@ -43,6 +43,7 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
 
     stances = dict()
     movement_array = dict()
+    movement_list
     trial_ = df['Trial'].min()#int(df.attrs['Trial'].split('T')[-1])
     date_ = df['Date'].min()
     for i, node in enumerate(node_list):
@@ -54,20 +55,36 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
         start_ = []
         end_ = []
         max_ = []
-        # x_ = dict()
-        # y_ = dict()
+        x_ = dict()
+        y_ = dict()
+        node_array_dict = dict()
         for idxs in range(len(start_end)):
             start_.append(start_end[idxs][0])
             end_.append(start_end[idxs][1])
+            mov_len = start_end[idxs][1]-start_end[idxs][0]
             max_.append(start_end[idxs][0]+np.argmax(y_diff[start_end[idxs][0]:start_end[idxs][1]]))
-            node_array = np.zeros()
-            # for nd in node_list:
-            #     node_array = 
+            node_array = np.zeros((len(node_list)*2,len(mov_len)))
+            node_array_list = []
+            for i, nd in enumerate(node_list):
+                 node_array(0+(i*2),:) = df[nd+'_X'][start_end[idxs][0]:start_end[idxs][1]]
+                 node_array(1+(i*2),:) = df[nd+'_Y'][start_end[idxs][0]:start_end[idxs][1]]
+                 node_array_list.extend([nd+ '_X', nd + '_Y']) # append double to keep track
+            
+            node_array_dict = {
+                'node_array' = node_array,
+                'node_list' = node_array_list,
+                'start': start_end[idxs][0],
+                'end': start_end[idxs][1],
+                'movement_length': node_array.shape[1]
+                'reference_node': node,
+                'no_nodes': len(node_list)
+            }
+            movement_list.append(node_array_dict)
         stances[node]={'start':start_,'end':end_, 'max':max_}
     stances['trial'] = trial_
     stances['date'] = date_
 
-    return pd.DataFrame.from_dict(stances)
+    return pd.DataFrame.from_dict(stances), movement_list
 
 def get_start_and_end(data: np.array, peaks, threshold: float):
     """Identifies start and stop of movements from a pose estimation time series.
