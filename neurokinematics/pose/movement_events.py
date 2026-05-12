@@ -33,9 +33,10 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
 
     Returns:
         pd.DataFrame: Pandas DataFrame containing start, stop, and maximum velocity indices for each node.
+        movement_list (list): List containing movement trajectories for each node with respect to a reference node
 
     Example:
-        >>> movements_df = extract_movements(
+        >>> movements_df, movement_list = extract_movements(
         ...     df = pose_df,
         ...     node_list = ['node1', 'node2', 'node3', 'node4'],
         ...     )
