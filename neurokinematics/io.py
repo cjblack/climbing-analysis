@@ -26,6 +26,7 @@ from pathlib import Path
 import json
 import pickle
 import zarr
+import xarray as xr
 import pandas as pd
 import dask.dataframe as dd
 import yaml
@@ -197,7 +198,7 @@ def load_json(file_path: str):
         data = json.load(f)
     return data
 
-def load_zarr(file_path: str, dataset: str, mode="r"):
+def load_zarr(file_path: str, dataset: str, mode="r", method: str = "zarr"):
     """Open zarr store - load is a misnomer for utiltiy sake, using open allows lazy access to data.
 
     Args:
@@ -207,11 +208,18 @@ def load_zarr(file_path: str, dataset: str, mode="r"):
 
     Returns:
         data (zar.core.Array): Chunked and compressed data in zarr store.
-        dict: Dictionary containing zarr store attributes
+        dict (optional): Dictionary containing zarr store attributes
     """
-    root = zarr.open(file_path, mode = mode)
-    data = root[dataset]
-    return data, dict(root.attrs)
+
+    file_path = _require_file(file_path)
+    if method == "zarr":
+        root = zarr.open(file_path, mode = mode)
+        data = root[dataset]
+        return data, dict(root.attrs)
+    elif method == "xarray":
+        data = xr.open_zarr(file_path)
+        return data
+
 
 def load_memmap(file_path: str, shape: tuple, dtype: str ="float32", mode: str = "r"):
     """Load a numpy memmap file
