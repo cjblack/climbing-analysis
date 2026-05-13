@@ -198,7 +198,7 @@ def load_json(file_path: str):
         data = json.load(f)
     return data
 
-def load_zarr(file_path: str, dataset: str, mode="r", method: str = "zarr"):
+def load_zarr(file_path: str, dataset: str | None = None, mode="r", method: str = "zarr"):
     """Open zarr store - load is a misnomer for utiltiy sake, using open allows lazy access to data.
 
     Args:
