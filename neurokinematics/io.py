@@ -198,13 +198,14 @@ def load_json(file_path: str):
         data = json.load(f)
     return data
 
-def load_zarr(file_path: str, dataset: str | None = None, mode="r", method: str = "zarr"):
+def load_zarr(file_path: str, dataset: str | None = None, mode: str ="r", method: str = "zarr"):
     """Open zarr store - load is a misnomer for utiltiy sake, using open allows lazy access to data.
 
     Args:
         file_path (str): Path pointing to zarr store
-        dataset (str): Folder within store to access.
+        dataset (str | None, optional): Folder within store to access.
         mode (str, optional): Reading mode for loading zarr store. Defaults to "r".
+        method (str, optional): Method used to load zarr data based on python package. Options are "zarr" and "xarray". Defaults to "zarr".
 
     Returns:
         data (zar.core.Array): Chunked and compressed data in zarr store.
