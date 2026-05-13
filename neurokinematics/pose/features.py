@@ -56,7 +56,7 @@ def pad_movements(movement_list: list, pad_value = np.nan):
     return padded, mov_list, valid, lengths
 
 
-def build_movement_dataset(padded: ndarray, movement_list: list, valid: ndarray, lengths: ndarray, save_path: Path | str | None = None):
+def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.ndarray, lengths: np.ndarray, save_path: Path | str | None = None):
     """Creates xarray dataset and optionally saves to zarr store
 
     Args:
