@@ -12,7 +12,8 @@ from pathlib import Path
 from spikeinterface import create_sorting_analyzer
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.sorters import run_sorter
-from spikeinterface.qualitymetrics import compute_quality_metrics
+#from spikeinterface.qualitymetrics import compute_quality_metrics # future deprecation - remove after tests
+from spikeinterface.metrics.quality import compute_quality_metrics
 from neurokinematics.io import save_dataframe
 from neurokinematics.ephys.io import *
 from neurokinematics.ephys.utils import create_probe
