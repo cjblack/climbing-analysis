@@ -148,14 +148,32 @@ def saveas_dataframe_to_csv(file_path: str, data: list):
     df = pd.DataFrame(data)
     df.to_csv(file_path, index=False)
 
-def save_dataframe(df, file_path, storage_format:str = 'csv', **kwargs):
+def save_dataframe(df, file_path, storage_format:str = 'csv', method: str = 'pandas', npartitions: int = 10, **kwargs):
+
+    file_path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     if storage_format == 'csv':
         df.to_csv(file_path)
+    
     elif storage_format == 'pickle':
         df.to_pickle(file_path)
+    
     elif storage_format == 'parquet':
-        df.to_parquet(file_path, **kwargs)
+    
+        if method == 'pandas':
+            df.to_parquet(file_path, **kwargs)
+    
+        elif method == 'dask':
+            ddf = dd.from_pandas(df, npartitions=npartitions)
+            ddf.to_parquet(file_path, write_index=False)
+    
+        else
+            raise ValueError("method must be one of: 'pandas, 'dask'")
+    else:
+        rause ValueError("storage_format must be one of: 'csv', 'pickle', 'parquet'")
 
 
 
