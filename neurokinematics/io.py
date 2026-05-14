@@ -26,6 +26,7 @@ from pathlib import Path
 import json
 import pickle
 import zarr
+import numpy as np
 import xarray as xr
 import pandas as pd
 import dask.dataframe as dd
@@ -93,6 +94,50 @@ def _require_path(path: Path | str):
     return path
 
 
+### * helper * ###
+
+def _choose_dataframe_save_method(df: pd.DataFrame, threshold_mb: float = 500):
+    """Determines dataframe save method based on memory allocation
+
+    Args:
+        df (pd.DataFrame): Dataframe to save
+        threshold_mb (float, optional): Memory size cutoff for storing with pandas. Defaults to 500.
+
+    Returns:
+        method (str): Returns method to store dataframe as. Either "pandas" or "dask".
+    """
+    size_mb = df.memory_usage(deep=True).sum() / 1e6
+    
+    if size_mb > threshold_mb:
+        method = "dask"
+    else:
+        method = "pandas"
+
+    return method
+
+def _choose_npartitions(df: pd.DataFrame, target_partition_mb: float = 200, min_parititons: int = 1, max_partitions: int = 64):
+    """Determine number of partitions for storing dataframe with dask array. 
+
+    Args:
+        df (pd.DataFrame): Dataframe containing data to check
+        target_partition_mb (float, optional): Target size for partitions. Defaults to 200.
+        min_parititons (int, optional): Minimum number of partitions. Defaults to 1.
+        max_partitions (int, optional): Maximum number of partitions. Defaults to 64.
+
+    Returns:
+        npartitions (int): Suggested number of partitions to use
+    """
+    
+    size_mb = df.memory_usage(deep=True).sum() / 1e6 # get memory size in mb
+    npartitions = int(np.ceil(size_mb / target_partition_mb))
+    npartitions = max(min_partitions, npartitions)
+    npartitions = min(max_partitions, npartitions)
+
+    return npartitions
+
+
+
+
 ### * directory * ###
 
 def create_session_dirs(session_dir: str | Path, output_dir_name: str | Path ='neurokinematics'):
@@ -148,12 +193,14 @@ def saveas_dataframe_to_csv(file_path: str, data: list):
     df = pd.DataFrame(data)
     df.to_csv(file_path, index=False)
 
-def save_dataframe(df, file_path, storage_format:str = 'csv', method: str = 'pandas', npartitions: int = 10, **kwargs):
+def save_dataframe(df, file_path, storage_format:str = 'csv', method: str | None = None, npartitions: int | None = None, **kwargs):
 
     file_path.parent.mkdir(
         parents=True,
         exist_ok=True
     )
+
+    file_path = Path(file_path)
 
     if storage_format == 'csv':
         df.to_csv(file_path)
@@ -162,18 +209,23 @@ def save_dataframe(df, file_path, storage_format:str = 'csv', method: str = 'pan
         df.to_pickle(file_path)
     
     elif storage_format == 'parquet':
-    
+        
+        if method is None:
+            method = _choose_dataframe_save_method(df)
+
         if method == 'pandas':
             df.to_parquet(file_path, **kwargs)
     
         elif method == 'dask':
-            ddf = dd.from_pandas(df, npartitions=npartitions)
-            ddf.to_parquet(file_path, write_index=False)
+            if npartitions is None:
+                npartitions = _choose_npartitions(df)
+                ddf = dd.from_pandas(df, npartitions=npartitions)
+                ddf.to_parquet(file_path, **kwargs)
     
-        else
-            raise ValueError("method must be one of: 'pandas, 'dask'")
+        else:
+            raise ValueError("method must be one of: 'pandas, 'dask', or None")
     else:
-        rause ValueError("storage_format must be one of: 'csv', 'pickle', 'parquet'")
+        raise ValueError("storage_format must be one of: 'csv', 'pickle', 'parquet'")
 
 
 
