@@ -2,7 +2,8 @@ import numpy as np
 import xarray as xr
 from pathlib import Path
 
-from neurokinematics.pose.io import save_movement_dataset
+#from neurokinematics.pose.io import save_movement_dataset
+from neurokinematics.io import save_dataset
 
 def pad_movements(movement_list: list, pad_value = np.nan):
     """Pad movement arrays to be the same size.
@@ -123,7 +124,7 @@ def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.nd
 
     if save_path:
         save_path = Path(save_path) / 'movement_positions.zarr'
-        save_movement_dataset(
+        save_dataset(
             ds, 
             save_path, 
             chunks = {
