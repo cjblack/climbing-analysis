@@ -226,6 +226,36 @@ def save_dataframe(df, file_path, storage_format:str = 'csv', method: str | None
             raise ValueError("method must be one of: 'pandas, 'dask', or None")
     else:
         raise ValueError("storage_format must be one of: 'csv', 'pickle', 'parquet'")
+    
+
+def save_dataset(ds: xr.Dataset, save_path: Path | str, chunks: dict | None = None, overwrite: bool = True):
+    """Save xarray dataset as zarr store
+
+    Args:
+        ds (xr.Dataset): Xarray dataset to be stored
+        save_path (Path | str): Save path of zarr store, must end in new folder name
+        chunks (dict | None, optional): Dictionary containing chunk relevant information. Defaults to None.
+        event_chunk (int, optional): Sets chunk size for events...current not in use. Defaults to 100.
+        overwrite (bool, optional): Determines whether zarr store is overwritten. Defaults to True.
+    """
+
+    save_path = Path(save_path)
+
+    if save_path.suffix != '.zarr':
+        save_path = save_path.with_suffix('.zarr')
+    
+    if chunks:
+        ds = ds.chunk(chunks = chunks)
+    
+    if overwrite:
+        mode = "w"
+        save_path.mkdir(parents = True, exist_ok = True)
+    
+    else:
+        mode = "w-"
+        save_path.mkdir(parents = True, exist_ok = False)
+
+    ds.to_zarr(save_path, mode=mode)
 
 
 
@@ -282,7 +312,7 @@ def load_zarr(file_path: str, dataset: str | None = None, mode: str ="r", method
         dict (optional): Dictionary containing zarr store attributes
     """
 
-    file_path = _require_file(file_path)
+    file_path = _require_path(file_path)
     if method == "zarr":
         root = zarr.open(file_path, mode = mode)
         data = root[dataset]
