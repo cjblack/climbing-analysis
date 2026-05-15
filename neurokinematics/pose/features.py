@@ -110,7 +110,7 @@ def resample_padded_pose(movement_data: np.ndarray, valid: np.ndarray, fps: floa
 
         # choose method for resampling and store in resampled array
         if method == "mean":
-            pose_resampled[bin_idx] = np.nanamean(samples, axis=0)
+            pose_resampled[bin_idx] = np.nanmean(samples, axis=0)
         elif method == "median":
             pose_resampled[bin_idx] = np.nanmedian(samples, axis=0)
         elif method == "first":
