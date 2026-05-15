@@ -6,25 +6,30 @@ import xarray as xr
 
 from tqdm import tqdm
 
-from neurokinematics.ephys.io import load_phy_sorting
 from neurokinematics.io import load_csv, load_zarr, save_dataframe, save_dataset
 
+from neurokinematics.ephys.io import load_phy_sorting
 
-def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, movement_dataset: str | xr.Dataset, save_path: Path | str, bin_size: float = 0.02):
+from neurokinematics.pose.features import resample_padded_pose
+
+
+
+def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, movement_dataset: str | xr.Dataset, save_path: Path | str | dict, bin_size: float = 0.02):
     """Bins spikes based on node specific movement periods
 
     Args:
         alignment (str | pd.DataFrame): Path or dataframe to pre-computed 'video_alignment.csv' file.
         sorter (str): Path to sorting folder, generally speaking this should be 'phy_output' generated during spike sorting.
         movement_dataset (str | xr.Dataset): Path or dataset containing movement specific data.
-        save_path (Path | str): Path to save data to.
+        save_path (Path | str | dict): Path to save data to. If dict is given, must be in format {'pose': 'path/to/save/pose', 'spikes': 'path/to/save/spikes'}
         bin_size (float, optional): Bin size in seconds to bin spikes into. Defaults to 0.02.
 
     Raises:
         ValueError: Checks frame rates are the same across 'events'. Should pass if testing on a single session
 
     Returns:
-        ds (xr.Dataset): Xarray dataset containing binned spikes
+        spike_ds (xr.Dataset): xarray dataset containing binned spikes
+        pose_ds (xr.Dataset): xarray dataset containing resampled movement data
         unbinned_spikes_df (df.DataFrame): Pandas dataframe containing unbinned spike times
     """
 
@@ -40,6 +45,15 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
     if isinstance(alignment, (str, Path)):
         alignment = load_csv(alignment, method='pandas')
 
+    # set up save paths...
+    if isinstance(save_path, (str, Path)):
+        spike_save_path = Path(save_path)
+        pose_save_path = Path(save_path)
+
+    elif isinstance(save_path, dict):
+        spike_save_path = Path(save_path['spikes'])
+        pose_save_path = Path(save_path['pose'])
+
     
     fs = sorter.sampling_frequency
     if not np.allclose(movement_dataset.frame_rate.values, movement_dataset.frame_rate.values[0]):
@@ -49,8 +63,10 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
     trial_ids = np.unique(movement_dataset.trial.values)
     mov_len = movement_dataset.sample.shape[0]
     no_events = movement_dataset.event.shape[0]
+    no_nodes = movement_dataset.node.shape[0]
+    no_coords = movement_dataset.coord.shape[0]
     unit_ids = sorter.unit_ids
-    save_path = Path(save_path)
+    
 
     # attributes dict
     attrs = {
@@ -63,13 +79,17 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
 
     }
 
+
     # create bins based on movement data size
     duration_s = mov_len / fps
     n_bins = int(np.ceil(duration_s / bin_size))
     bin_edges = np.linspace(0, (n_bins * bin_size), n_bins + 1)
     bin_centers = bin_edges[:-1] + bin_size / 2
 
+    # create arrays to fill
     spike_counts = np.zeros((no_events, len(bin_centers), len(unit_ids)))
+    pose_resampled = np.full((no_events, len(bin_centers), no_nodes, no_coords), fill_value = np.nan)
+    valid_bins = np.zeros((no_events, len(bin_centers)), dtype=bool)
     unbinned_spikes = []
 
     for i, event_id in tqdm(enumerate(movement_dataset.event.values), total=no_events, desc="Extracting spikes", unit="events"):
@@ -79,7 +99,10 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
         end_id = movement_sub.end_idx.values
         valid_samples = movement_sub.valid.values
         node = movement_sub.reference_node.values
+        pose_resampled_i, valid_bins_i = resample_padded_pose(movement_sub.position.values, movement_sub.valid.values, fps, bin_edges, method='mean')
 
+        pose_resampled[i,:,:,:] = pose_resampled_i
+        valid_bins[i,:] = valid_bins_i
 
         start = alignment.query('video_index==@trial & frame_id == @start_id')['sample_index'].item()
         end = alignment.query('video_index==@trial & frame_id == @end_id')['sample_index'].item()
@@ -119,19 +142,25 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
 
     
     # saving data
-    save_dataframe(unbinned_spikes_df, file_path = save_path / 'unbinned_movement_spikes.parquet', storage_format='parquet')
-    ds = build_movement_aligned_datasets(spike_counts, movement_dataset, bin_centers, unit_ids, attrs, save_path)
-    return ds, unbinned_spikes_df
+    save_dataframe(unbinned_spikes_df, file_path = spike_save_path / 'unbinned_movement_spikes.parquet', storage_format='parquet')
+    spike_ds = build_aligned_spike_binned_dataset(spike_counts, valid_bins, movement_dataset, bin_centers, unit_ids, attrs, spike_save_path)
+    pose_ds = build_resampled_movements_dataset(pose_resampled, valid_bins, movement_dataset, bin_centers, attrs, pose_save_path)
+
+    return spike_ds, pose_ds, unbinned_spikes_df
 
 
 
-def build_movement_aligned_datasets(spike_counts: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, unit_ids: np.ndarray, attrs: dict, save_path: Path | str | None = None):
+def build_aligned_spike_binned_dataset(spike_counts: np.ndarray, valid: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, unit_ids: np.ndarray, attrs: dict, save_path: Path | str | None = None):
 
     ds = xr.Dataset(
         data_vars = {
             "spike_counts":(
                 ['event', 'time_bin', 'unit'],
                 spike_counts
+            ),
+            "valid": (
+                ['event', 'time_bin'],
+                valid
             ),
             "id":(
                 ['event'],
@@ -169,6 +198,61 @@ def build_movement_aligned_datasets(spike_counts: np.ndarray, movement_dataset: 
                 "event": min(100, movement_dataset.event.values.shape[0]),
                 "time_bin": -1,
                 "unit": -1
+            }
+        )
+
+    return ds
+
+
+def build_resampled_movements_dataset(movement_array: np.ndarray, valid: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, attrs: dict, save_path: Path | str | None = None):
+
+    ds = xr.Dataset(
+        data_vars = {
+            "position":(
+                ['event', 'time_bin', 'node', 'coord'],
+                movement_array
+            ),
+            "valid": (
+                ['event', 'time_bin'],
+                valid
+            ),
+            "id":(
+                ['event'],
+                movement_dataset.id.values
+            ),
+            "date":(
+                ['event'],
+                movement_dataset.date.values
+            ),
+            "reference_node":(
+                ['event'],
+                movement_dataset.reference_node.values
+            ),
+            "trial": (
+                ['event'],
+                movement_dataset.trial.values
+            )
+        },
+        coords = {
+            "event": movement_dataset.event.values,
+            "time_bin": time_bins,
+            "node": movement_dataset.node.values,
+            "coord": movement_dataset.coord.values
+        },
+        attrs = attrs
+    )
+
+    if save_path:
+        bin_info = int(np.ceil(attrs['bin_size']*1000.))
+        save_path = Path(save_path) / f'resampled_movements_{bin_info}ms.zarr'
+        
+        save_dataset(
+            ds,
+            save_path,
+            chunks = {
+                "event": min(100, movement_dataset.event.values.shape[0]),
+                "time_bin": -1,
+                "coord": -1
             }
         )
 
