@@ -57,6 +57,73 @@ def pad_movements(movement_list: list, pad_value = np.nan):
     return padded, mov_list, valid, lengths
 
 
+def resample_padded_pose(movement_data: np.ndarray, valid: np.ndarray, fps: float, bin_edges: np.ndarray, method: str = 'mean'):
+    """Resample a padded pose array. Used typically in conjunction with binning spikes
+
+    Args:
+        movement_data (np.ndarray): Array containing paddded pose data as Samples x Nodes x Coordinates. Originally designed for x,y position data
+        valid (np.ndarray): Boolean array indicating indicies of valid pose values (True) and padded values (False)
+        fps (float): Frame rate used for pose data in frames per second.
+        bin_edges (np.ndarray): Bin edges used for binning associated data (e.g. spikes).
+        method (str, optional): Method for resampling. Options are 'mean', 'median', 'first', or 'last'. Defaults to 'mean'.
+
+    Raises:
+        ValueError: Raises when non-existent method is used.
+
+    Returns:
+        pose_resampled (np.ndarray): Array containing resampled pose data, with padding.
+        valid_bins (np.ndarray): Boolean array containing valid resampled points based on bins.
+    """
+
+    # get valid pose indicies and samples
+    valid_pose = movement_data[valid]
+    sample_times = np.arange(valid_pose.shape[0]) / fps
+
+    n_bins = len(bin_edges) - 1
+    n_nodes = movement_data.shape[1]
+    n_coords = movement_data.shape[2]
+
+    # create resampling array
+    pose_resampled = np.full(
+        (n_bins, n_nodes, n_coords),
+        np.nan,
+        dtype = float
+    )
+    
+    # create validity array
+    valid_bins = np.zeros(n_bins, dtype = bool)
+
+    # loop through bins to resample
+    for bin_idx in range(n_bins):
+        # fine indicies of padded array inside current bin
+        in_bin = (
+            (sample_times >= bin_edges[bin_idx]) &
+            (sample_times < bin_edges[bin_idx + 1])
+        )
+
+        # skip if there are no valid samples
+        if not np.any(in_bin):
+            continue
+
+        # extract only valid pose samples in bin
+        samples = valid_pose[in_bin]
+
+        # choose method for resampling and store in resampled array
+        if method == "mean":
+            pose_resampled[bin_idx] = np.nanamean(samples, axis=0)
+        elif method == "median":
+            pose_resampled[bin_idx] = np.nanmedian(samples, axis=0)
+        elif method == "first":
+            pose_resampled[bin_idx] = samples[0]
+        elif method == "last":
+            pose_resampled[bin_idx] = samples[-1]
+        else:
+            raise ValueError(f"method must be one of: 'mean', 'median', 'first', 'last'. Method provided was: {method}")
+        
+        valid_bins[bin_idx] = True
+
+    return pose_resampled, valid_bins
+
 def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.ndarray, lengths: np.ndarray, save_path: Path | str | None = None):
     """Creates xarray dataset and optionally saves to zarr store
 
