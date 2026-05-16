@@ -33,10 +33,15 @@ These classes will extend the base session interface with experiment-specific pr
 
 from pathlib import Path
 import shutil
+from datetime import datetime
+
 import xmltodict
 import pandas as pd
 import yaml
 import dask.dataframe as dd
+
+# version
+from neurokinematics import __version__ as nk_version
 
 from neurokinematics.decorators import log_call
 
@@ -201,7 +206,9 @@ class ExperimentSession:
 
         cfg = {
             'session_runtime':{
+                "nk_version": nk_version,
                 "session_id": self.session_id,
+                "created_on": datetime.now().isoformat(),
                 "ephys_data_path": str(self.ephys_data_path),
                 "pose_data_path": str(self.pose_data_path),
                 "output_root": str(self.output_root),
