@@ -23,5 +23,5 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["neurokinematics"]
 include = ["neurokinematics*"]
