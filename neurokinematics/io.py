@@ -2,7 +2,7 @@
 High-level I/O for saving and loading.
 
 Contains simplified versions of storage operations to reduce overhead across code. 
-Keep this module to saveas/load of file various file formats, set config paths, session directories, and associated checks.
+Keep this module to saveas/load of file various file formats, set config paths, session directories, and associated checks/validations.
 
 config paths
 
@@ -21,6 +21,7 @@ loading
 - pickle
 - yaml
 """
+
 
 from pathlib import Path
 import json
