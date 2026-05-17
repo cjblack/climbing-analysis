@@ -61,10 +61,12 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
 
     fps = movement_dataset.frame_rate.values[0] # all values should be the same
     trial_ids = np.unique(movement_dataset.trial.values)
-    mov_len = movement_dataset.sample.shape[0]
+    mov_len = movement_dataset.time.shape[0]
     no_events = movement_dataset.event.shape[0]
     no_nodes = movement_dataset.node.shape[0]
     no_coords = movement_dataset.coord.shape[0]
+    pose_features = movement_dataset.attrs['features']
+    no_features = len(pose_features)
     unit_ids = sorter.unit_ids
     
 
@@ -75,8 +77,8 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
         "ephys_fs": fs,
         "trial_ids": trial_ids,
         "no_events": no_events,
-        "unit_ids": unit_ids
-
+        "unit_ids": unit_ids,
+        "pose_features": pose_features
     }
 
 
@@ -88,7 +90,14 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
 
     # create arrays to fill
     spike_counts = np.zeros((no_events, len(bin_centers), len(unit_ids)))
-    pose_resampled = np.full((no_events, len(bin_centers), no_nodes, no_coords), fill_value = np.nan)
+    pose_resampled = dict()
+    for feat in pose_features:
+        if feat == 'speed':
+            pose_resampled[feat] = np.full((no_events, len(bin_centers), no_nodes), fill_value = np.nan)
+        else:
+            pose_resampled[feat] = np.full((no_events, len(bin_centers), no_nodes, no_coords), fill_value = np.nan)
+
+    #pose_resampled = np.full((no_events, len(bin_centers), no_nodes, no_coords, no_features), fill_value = np.nan)
     valid_bins = np.zeros((no_events, len(bin_centers)), dtype=bool)
     unbinned_spikes = []
 
@@ -99,10 +108,14 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
         end_id = movement_sub.end_idx.values
         valid_samples = movement_sub.valid.values
         node = movement_sub.reference_node.values
-        pose_resampled_i, valid_bins_i = resample_padded_pose(movement_sub.position.values, movement_sub.valid.values, fps, bin_edges, method='mean')
 
-        pose_resampled[i,:,:,:] = pose_resampled_i
-        valid_bins[i,:] = valid_bins_i
+        for fi, feat in enumerate(pose_features):
+
+            pose_resampled_i, valid_bins_i = resample_padded_pose(movement_sub[feat].values, movement_sub.valid.values, fps, bin_edges, method='mean')
+            pose_resampled[feat][i] = pose_resampled_i
+            #pose_resampled[i,:,:,:, fi] = pose_resampled_i
+            if feat == pose_features[0]:
+                valid_bins[i,:] = valid_bins_i
 
         start = alignment.query('video_index==@trial & frame_id == @start_id')['sample_index'].item()
         end = alignment.query('video_index==@trial & frame_id == @end_id')['sample_index'].item()
@@ -204,14 +217,12 @@ def build_aligned_spike_binned_dataset(spike_counts: np.ndarray, valid: np.ndarr
     return ds
 
 
-def build_resampled_movements_dataset(movement_array: np.ndarray, valid: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, attrs: dict, save_path: Path | str | None = None):
-
+def build_resampled_movements_dataset(movement_dict: dict, valid: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, attrs: dict, save_path: Path | str | None = None):
+    
+    pose_features = attrs['pose_features']
+    
     ds = xr.Dataset(
         data_vars = {
-            "position":(
-                ['event', 'time_bin', 'node', 'coord'],
-                movement_array
-            ),
             "valid": (
                 ['event', 'time_bin'],
                 valid
@@ -241,6 +252,12 @@ def build_resampled_movements_dataset(movement_array: np.ndarray, valid: np.ndar
         },
         attrs = attrs
     )
+
+    for feat, farray in movement_dict.items():
+        if feat == 'speed':
+            ds[feat] = (('event', 'time_bin', 'node'), farray.squeeze())
+        else:
+            ds[feat] = (('event', 'time_bin', 'node', 'coord'), farray) 
 
     if save_path:
         bin_info = int(np.ceil(attrs['bin_size']*1000.))

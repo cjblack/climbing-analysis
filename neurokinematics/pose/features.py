@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import xarray as xr
 from pathlib import Path
@@ -80,8 +82,11 @@ def resample_padded_pose(movement_data: np.ndarray, valid: np.ndarray, fps: floa
     sample_times = np.arange(valid_pose.shape[0]) / fps
 
     n_bins = len(bin_edges) - 1
-    n_nodes = movement_data.shape[1]
-    n_coords = movement_data.shape[2]
+    n_nodes = movement_data.shape[1]    
+    if len(movement_data.shape) == 2:
+        n_coords = 1
+    else:
+        n_coords = movement_data.shape[2]
 
     attrs = {
         "fps": fps,
@@ -90,8 +95,9 @@ def resample_padded_pose(movement_data: np.ndarray, valid: np.ndarray, fps: floa
     }
 
     # create resampling array
+    pose_shape = movement_data.shape[1:]
     pose_resampled = np.full(
-        (n_bins, n_nodes, n_coords),
+        (n_bins, *pose_shape),
         np.nan,
         dtype = float
     )
@@ -116,7 +122,9 @@ def resample_padded_pose(movement_data: np.ndarray, valid: np.ndarray, fps: floa
 
         # choose method for resampling and store in resampled array
         if method == "mean":
-            pose_resampled[bin_idx] = np.nanmean(samples, axis=0)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category = RuntimeWarning)
+                pose_resampled[bin_idx] = np.nanmean(samples, axis=0)
         elif method == "median":
             pose_resampled[bin_idx] = np.nanmedian(samples, axis=0)
         elif method == "first":
@@ -206,6 +214,8 @@ def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.nd
     ds['velocity'] = compute_velocity(ds['position'], dim='time')
     ds['speed'] = compute_speed(ds['velocity'], dim='coord')
     ds['acceleration'] = compute_acceleration(ds['velocity'], dim='time')
+
+    ds.attrs = {'features': ['position', 'velocity', 'speed', 'acceleration']}
 
     if save_path:
         save_path = Path(save_path) / 'movement_features.zarr'
