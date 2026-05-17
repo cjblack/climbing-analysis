@@ -186,7 +186,7 @@ class ExperimentSession:
 
         if session.session_outputs_path.exists():
             with open(session.session_outputs_path, "r") as f:
-                session.session_outputs = yaml.save_load(f) or {}
+                session.session_outputs = yaml.safe_load(f) or {}
         else:
             session.session_outputs = {}
             with open(session.session_outputs_path, "w") as f:
