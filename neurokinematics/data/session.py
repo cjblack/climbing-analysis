@@ -126,8 +126,8 @@ class ExperimentSession:
         self.session_outputs_path = self.session_path / 'session_outputs.yaml'
 
         # instantiate blank output file
-        if not session_outputs_path.exists():
-            with open(session_outputs_path, "w") as f:
+        if not self.session_outputs_path.exists():
+            with open(self.session_outputs_path, "w") as f:
                 yaml.safe_dump(self.session_outputs, f)
 
 
