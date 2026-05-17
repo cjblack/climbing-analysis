@@ -34,6 +34,7 @@ These classes will extend the base session interface with experiment-specific pr
 from pathlib import Path
 import shutil
 from datetime import datetime
+import warnings
 
 import xmltodict
 import pandas as pd
@@ -64,6 +65,7 @@ from neurokinematics.ephys.lfp.plotting import plot_movement_erps_probe
 
 # multimodal
 from neurokinematics.multi_modal.alignment import get_camera_events, align_movements_to_ephys
+from neurokinematics.multi_modal.features import get_movement_aligned_features
 
 
 
@@ -81,6 +83,9 @@ class ExperimentSession:
     """
     def __init__(self, session_id: str, ephys_data_path: Path | str, pose_data_path: Path | str, output_root_path: Path | str | None = None, cfg: str ='demo_session.yaml'):
   
+        # set creation date
+        self.created_on = datetime.now().isoformat()
+
         # set session id
         self.session_id = session_id
 
@@ -115,6 +120,16 @@ class ExperimentSession:
         # create session directory
         self.session_path = self.output_root / f"{self.session_id}_nk"
         self.dirs = create_session_dirs(self.session_path)
+
+        # create outputs monitor
+        self.session_outputs = {}
+        self.session_outputs_path = self.session_path / 'session_outputs.yaml'
+
+        # instantiate blank output file
+        if not session_outputs_path.exists():
+            with open(session_outputs_path, "w") as f:
+                yaml.safe_dump(self.session_outputs, f)
+
 
         if cfg is not None:
             self._save_session_config()
@@ -165,6 +180,18 @@ class ExperimentSession:
         # set paths
         session.session_path = session_path
 
+        # load session outputs
+        outputs_path = runtime.get("session_outputs_path", "session_outputs.yaml")
+        session.session_outputs_path = session_path / outputs_path
+
+        if session.session_outputs_path.exists():
+            with open(session.session_outputs_path, "r") as f:
+                session.session_outputs = yaml.save_load(f) or {}
+        else:
+            session.session_outputs = {}
+            with open(session.session_outputs_path, "w") as f:
+                yaml.safe_dump(session.session_outputs, f, sort_keys = False)
+
         # recreate dirs
         if 'session_dirs' in runtime:
             session.dirs = {key: Path(val) for key, val in runtime['session_dirs'].items()}
@@ -208,11 +235,12 @@ class ExperimentSession:
             'session_runtime':{
                 "nk_version": nk_version,
                 "session_id": self.session_id,
-                "created_on": datetime.now().isoformat(),
+                "created_on": self.created_on,
                 "ephys_data_path": str(self.ephys_data_path),
                 "pose_data_path": str(self.pose_data_path),
                 "output_root": str(self.output_root),
                 "session_path": str(self.session_path),
+                "session_outputs_path": "session_outputs.yaml",
                 "session_dirs": {key: str(val) for key, val in self.dirs.items()}
                 },
             'configs':{
@@ -248,7 +276,46 @@ class ExperimentSession:
                 'node_list': self.pose_cfg['movement_detection']['node_list']
             }
         }
+
+    def _record_session_output(self, name: str, path: str | Path, file_type: str | None = None, attrs: dict | None = None):
+        """Records outputs created during session.
+
+        Args:
+            name (str): _description_
+            path (str | Path): _description_
+            file_type (str | None, optional): _description_. Defaults to None.
+            attrs (dict | None, optional): _description_. Defaults to None.
+        """
+        
+        path = Path(path)
+
+        # need to create a resolver...
+        try:
+            stored_path = path.relative_to(
+                self.session_path
+            )
+        except ValueError:
+            stored_path = path
+
+        if name in self.session_outputs:
+            warnings.warn(
+                f"Overwriting existing output: {name}"
+            )
+
+        self.session_outputs[name] = {
+            "path": str(stored_path),
+            "created": datetime.now().isoformat(),
+            "nk_version": nk_version,
+            "file_type": file_type,
+            "attrs": attrs or {}
+        }
+
+        session_outputs_path = self.session_path / "session_outputs.yaml"
+
+        with open(session_outputs_path, "w") as f:
+            yaml.safe_dump(self.session_outputs, f, sort_keys=False)
     
+
     def _handle_existing_output(self, path: Path, mode: str):
         """Deals with processing/alignment calls if session was already created to avoid accidental overwriting
 
@@ -518,6 +585,33 @@ class ExperimentSession:
             save_path = self.dirs['spikes']
         )
 
+    ### * extract features * ###
+    def bin_movements_and_spikes(self, bin_size: float = 0.02, return_data: bool = False):
+
+        movement_dataset = self.dirs['pose'] / 'movement_features.zarr'
+        alignment = self.dirs['alignment'] / 'video_alignment.csv'
+        sorter = self.dirs['spikes'] / 'kilosort4' / 'phy_output'
+        
+        required = [
+            movement_dataset,
+            alignment,
+            sorter
+        ]
+
+        missing = [p for p in required if not p.exists()]
+        if missing:
+            raise FileNotFoundError(
+                "Cannot extract binned data. Missing required files:\n"
+                + "\n".join(str(p) for p in missing)
+            )
+        
+        save_path = {'pose': self.dirs['pose'], 'spikes': self.dirs['spikes']}
+        binned_pose, binned_spikes, unbinned_spikes = get_movement_aligned_features(alignment = alignment, sorter = sorter, movement_dataset = movement_dataset, save_path=save_path, bin_size = bin_size)
+
+        if return_data:
+            return binned_pose, binned_spikes, unbinned_spikes
+
+    ### * plotting * ###
     def plot_spikes(self, unit_ids, plot_params, save_plots: bool = False):
 
         required = [
