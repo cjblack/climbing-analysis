@@ -83,6 +83,12 @@ def resample_padded_pose(movement_data: np.ndarray, valid: np.ndarray, fps: floa
     n_nodes = movement_data.shape[1]
     n_coords = movement_data.shape[2]
 
+    attrs = {
+        "fps": fps,
+        "n_nodes": n_nodes,
+        "n_coords": n_coords
+    }
+
     # create resampling array
     pose_resampled = np.full(
         (n_bins, n_nodes, n_coords),
@@ -138,14 +144,22 @@ def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.nd
         _type_: _description_
     """
     node_names = movement_list[0]['node_list']
+    frame_rates = np.array([mv['frame_rate'] for mv in movement_list])
+
+    if not np.allclose(frame_rates, frame_rates[0], rtol=0, atol=1e-9):
+        raise ValueError(f"Inconsistent frame rates detected: {np.unique(frame_rates)}")
+
+    frame_rate = frame_rates[0]
+    time = np.arange(lengths.max()) / frame_rate
+    
     ds = xr.Dataset(
        data_vars = {
            "position": (
-               ['event', 'sample', 'node', 'coord'],
+               ['event', 'time', 'node', 'coord'],
                padded
            ),
            "valid": (
-               ['event', 'sample'],
+               ['event', 'time'],
                valid
            ),
             "start_idx": (
@@ -178,28 +192,47 @@ def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.nd
             ),
             "frame_rate": (
                 ['event'],
-                [mv['frame_rate'] for mv in movement_list]
+                frame_rates
             )
        },
        coords = {
            "event": np.arange(len(movement_list)),
-           "sample": np.arange(lengths.max()),
-           "node":  node_list,
+           "time": time,
+           "node":  node_names,
            "coord": ["x", "y"]
        }
     )
+    
+    ds['velocity'] = compute_velocity(ds['position'], dim='time')
+    ds['speed'] = compute_speed(ds['velocity'], dim='coord')
+    ds['acceleration'] = compute_acceleration(ds['velocity'], dim='time')
 
     if save_path:
-        save_path = Path(save_path) / 'movement_positions.zarr'
+        save_path = Path(save_path) / 'movement_features.zarr'
         save_dataset(
             ds, 
             save_path, 
             chunks = {
                 "event": min(100, len(movement_list)), 
-                "sample": -1, 
+                "time": -1, 
                 "node": -1, 
                 "coord": -1
             }
         )
 
     return ds
+
+
+### * compute features * ###
+
+def compute_velocity(position_ds, dim: str = "time"):
+    velocity = position_ds.differentiate(dim)
+    return velocity
+
+def compute_speed(velocity, dim: str = "coord"):
+    speed = np.sqrt((velocity ** 2).sum(dim))
+    return speed
+
+def compute_acceleration(velocity, dim: str = "time"):
+    acceleration = velocity.differentiate(dim)
+    return acceleration
