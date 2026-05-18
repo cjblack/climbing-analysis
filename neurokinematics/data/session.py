@@ -277,7 +277,7 @@ class ExperimentSession:
             }
         }
 
-    def _record_session_output(self, name: str, path: str | Path, file_type: str | None = None, attrs: dict | None = None):
+    def _record_session_output(self, file_outputs: dict):#name: str, path: str | Path, file_type: str | None = None, attrs: dict | None = None):
         """Records outputs created during session.
 
         Args:
@@ -286,29 +286,32 @@ class ExperimentSession:
             file_type (str | None, optional): _description_. Defaults to None.
             attrs (dict | None, optional): _description_. Defaults to None.
         """
-        
-        path = Path(path)
+        for key, val in file_outputs.items():
+            name = key
+            path = Path(val['path'])
+            file_type = val['file_type']
+            attrs = val['attrs']
 
-        # need to create a resolver...
-        try:
-            stored_path = path.relative_to(
-                self.session_path
-            )
-        except ValueError:
-            stored_path = path
+            # need to create a resolver...
+            try:
+                stored_path = path.relative_to(
+                    self.session_path
+                )
+            except ValueError:
+                stored_path = path
 
-        if name in self.session_outputs:
-            warnings.warn(
-                f"Overwriting existing output: {name}"
-            )
+            if name in self.session_outputs:
+                warnings.warn(
+                    f"Overwriting existing output: {name}"
+                )
 
-        self.session_outputs[name] = {
-            "path": str(stored_path),
-            "created": datetime.now().isoformat(),
-            "nk_version": nk_version,
-            "file_type": file_type,
-            "attrs": attrs or {}
-        }
+            self.session_outputs[name] = {
+                "path": str(stored_path),
+                "created": datetime.now().isoformat(),
+                "nk_version": nk_version,
+                "file_type": file_type,
+                "attrs": attrs or {}
+            }
 
         session_outputs_path = self.session_path / "session_outputs.yaml"
 
@@ -377,11 +380,15 @@ class ExperimentSession:
         if not should_run:
             return {"exists": True, "path": expected_output}
         
-        self.pose_processed = process_sleap(
+        self.pose_processed, file_outputs = process_sleap(
             data_path = self.pose_data_path,
             pose_cfg = self.cfg['configs']['pose'],
             save_path = self.dirs['pose']
         )
+
+        self._record_session_output(file_outputs)
+
+
     
     @log_call(label='spike sorting', type='run')
     def run_spike_sorting(self, mode: str = "skip"):
