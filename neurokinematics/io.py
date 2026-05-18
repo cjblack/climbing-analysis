@@ -149,7 +149,7 @@ def create_session_dirs(session_dir: str | Path, output_dir_name: str | Path ='n
         output_dir_name (str | Path, optional): . Defaults to 'neurokinematics'.
 
     Returns:
-        dirs (dict): Dictionary of created directories with keys: 'root', 'pose', 'ephys', 'alignment', 'events', 'spikes', 'lfp', 'plots'
+        dirs (dict): Dictionary of created directories with keys: 'root', 'pose', 'ephys', 'results', 'alignment', 'events', 'spikes', 'lfp', 'plots', 'models', 'tables'
     """
     session_dir = Path(session_dir)
     output_dir = session_dir / output_dir_name
@@ -158,11 +158,14 @@ def create_session_dirs(session_dir: str | Path, output_dir_name: str | Path ='n
         "root": output_dir,
         "pose": output_dir / 'pose',
         "ephys": output_dir / 'ephys',
+        "results": output_dir / 'results',
         "alignment": output_dir / 'alignment',
         'events': output_dir / 'events',
         "spikes": output_dir / 'ephys' / 'spikes',
         "lfp": output_dir / 'ephys' / 'lfp',
-        "plots": output_dir / 'plots'
+        "plots": output_dir / 'results' /'plots',
+        "models": output_dir / 'results' / 'models',
+        "tables": output_dir / 'results' / 'tables'
     }
 
     for path in dirs.values():
