@@ -67,6 +67,9 @@ from neurokinematics.ephys.lfp.plotting import plot_movement_erps_probe
 from neurokinematics.multi_modal.alignment import get_camera_events, align_movements_to_ephys
 from neurokinematics.multi_modal.features import get_movement_aligned_features
 
+# models
+from neurokinematics.models.registry import MODEL_REGISTRY
+
 
 
 class ExperimentSession:
@@ -226,6 +229,7 @@ class ExperimentSession:
         self.pose_cfg = load_config(cfg_group['pose'], config_type='pose') # pose config
         self.lfp_preprocessing_cfg = load_config(cfg_group['lfp'], config_type='lfp') # lfp preprocessing config
         self.multimodal_cfg = load_config(cfg_group['multi_modal'], config_type='multimodal') # multimodal alignment config
+        self.models_cfg = load_config(cfg_group['models'], config_type = 'models')
 
     def _save_session_config(self):
         """Freezes session config so session can be loaded at another time
@@ -617,6 +621,14 @@ class ExperimentSession:
 
         if return_data:
             return binned_pose, binned_spikes, unbinned_spikes
+        
+    ### * run model * ###
+    def fit_unit_model(self, model: str, x_data: str, y_data: str, params: dict):
+
+        model_fn = MODEL_REGISTRY[model]
+        model_fn(x_data, y_data, params, self.dirs['models'])
+
+
 
     ### * plotting * ###
     def plot_spikes(self, unit_ids, plot_params, save_plots: bool = False):
