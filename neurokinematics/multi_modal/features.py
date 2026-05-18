@@ -167,33 +167,39 @@ def build_aligned_spike_binned_dataset(spike_counts: np.ndarray, valid: np.ndarr
 
     ds = xr.Dataset(
         data_vars = {
+            # binned spike counts
             "spike_counts":(
                 ['event', 'time_bin', 'unit'],
                 spike_counts
             ),
+            # boolean indicated non-padded indices
             "valid": (
                 ['event', 'time_bin'],
                 valid
             ),
+            # subject id
             "id":(
                 ['event'],
                 movement_dataset.id.values
             ),
+            # experiment date
             "date":(
                 ['event'],
                 movement_dataset.date.values
             ),
+            # node that initialised the moving
             "reference_node":(
                 ['event'],
                 movement_dataset.reference_node.values
             ),
+            # trial - video that movement came from...might change later
             "trial": (
                 ['event'],
                 movement_dataset.trial.values
             )
         },
         coords = {
-            "event": movement_dataset.event.values,
+            "event": movement_dataset.event.values, 
             "time_bin": time_bins,
             "unit": np.arange(len(unit_ids))
         },
@@ -223,22 +229,27 @@ def build_resampled_movements_dataset(movement_dict: dict, valid: np.ndarray, mo
     
     ds = xr.Dataset(
         data_vars = {
+            # boolean indicated non-padded indices
             "valid": (
                 ['event', 'time_bin'],
                 valid
             ),
+            # subject id
             "id":(
                 ['event'],
                 movement_dataset.id.values
             ),
+            # date of experiment
             "date":(
                 ['event'],
                 movement_dataset.date.values
             ),
+            # node that initialised the movement
             "reference_node":(
                 ['event'],
                 movement_dataset.reference_node.values
             ),
+            # trial - video that movement came from
             "trial": (
                 ['event'],
                 movement_dataset.trial.values
@@ -255,8 +266,10 @@ def build_resampled_movements_dataset(movement_dict: dict, valid: np.ndarray, mo
 
     for feat, farray in movement_dict.items():
         if feat == 'speed':
+            # binned speed (magnitude of movement averaged across x and y coords)
             ds[feat] = (('event', 'time_bin', 'node'), farray.squeeze())
         else:
+            # binned directional features - current possibilities are 'position', 'acceleration', 'velocity'
             ds[feat] = (('event', 'time_bin', 'node', 'coord'), farray) 
 
     if save_path:
