@@ -26,6 +26,7 @@ loading
 from pathlib import Path
 import json
 import pickle
+import joblib
 import zarr
 import numpy as np
 import xarray as xr
@@ -188,6 +189,10 @@ def saveas_json(file_path: str, data: dict):
     with open(file_path, "w") as f:
         json.dump(data, f, indent=2)
 
+def save_yaml(data: dict, file_path: str):
+    with open(file_path, "w") as f:
+        yaml.safe_dump(data, f, sort_keys=False)
+
 def saveas_dataframe_to_csv(file_path: str, data: list):
     """Convert a list of dicts to a pandas dataframe and save it as a csv. Simplifies saving meta/chunk data.
 
@@ -232,6 +237,17 @@ def save_dataframe(df, file_path, storage_format:str = 'csv', method: str | None
     else:
         raise ValueError("storage_format must be one of: 'csv', 'pickle', 'parquet'")
     
+def save_model(model, file_path: Path | str, method: str = 'joblib', **kwargs):
+    file_path = Path(file_path)
+    
+    if method == 'joblib':
+        joblib.dump(model, file_path, **kwargs)
+    elif method == 'pickle':
+        with open(file_path, 'w') as f:
+            pickle.dump(model, f, **kwargs)
+
+    else:
+        raise ValueError("method must be one of: 'joblib', 'pickle'.")
 
 def save_dataset(ds: xr.Dataset, save_path: Path | str, chunks: dict | None = None, overwrite: bool = True):
     """Save xarray dataset as zarr store
