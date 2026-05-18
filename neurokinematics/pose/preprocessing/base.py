@@ -39,7 +39,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
         file_outputs (dict): Dictionary containing information for files created during call
 
     Example:
-        >>> pose_proc_obj = process_sleap(
+        >>> pose_proc_obj, file_outputs = process_sleap(
         ...     data_path = "path/to/converted/sleap/files"
         ...     pose_cfg = "demo_pose_cfg.yaml",
         ...     save_path = "path/to/outputs"
@@ -54,6 +54,8 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     file_format = cfg['pose_format']['file_format']
     sample_rate = cfg['pose_format']['frame_rate']
     movement_detection = cfg['movement_detection']
+
+    # create file outputs dictionary - currently testing
     file_outputs = dict()
 
     # get / create paths
