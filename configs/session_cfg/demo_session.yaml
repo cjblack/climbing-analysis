@@ -15,6 +15,7 @@ configs:
   lfp: "demo_lfp_cfg.yaml"
   pose: "demo_pose_cfg.yaml"
   multi_modal: "demo_camera_alignment_cfg.yaml"
+  models: "demo_model_cfg.yaml"
 
 pipeline:
   run_pose: true
