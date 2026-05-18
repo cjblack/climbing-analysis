@@ -45,6 +45,7 @@ CFG_PATHS = {
     'pose': CFG_ROOT_PATH / 'pose_cfg',
     'spksorting': CFG_ROOT_PATH / 'spk_sorting_cfg',
     'lfp': CFG_ROOT_PATH / 'lfp_cfg',
+    'models': CFG_ROOT_PATH / 'models_cfg',
     'session': CFG_ROOT_PATH / 'session_cfg'
 }
 
