@@ -36,6 +36,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
 
     Returns:
         PoseProcessed: Lightweight class storing metadata for preprocessing steps.
+        file_outputs (dict): Dictionary containing information for files created during call
 
     Example:
         >>> pose_proc_obj = process_sleap(
@@ -53,6 +54,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     file_format = cfg['pose_format']['file_format']
     sample_rate = cfg['pose_format']['frame_rate']
     movement_detection = cfg['movement_detection']
+    file_outputs = dict()
 
     # get / create paths
     data_path = Path(data_path)
@@ -108,7 +110,12 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
         movement_lists = np.concat(movement_lists) # concatenate lists
         padded, mov_list, valid, lengths = pad_movements(movement_lists) # pad movements so they are all the same length - easier for downstream analysis
         movement_ds = build_movement_dataset(padded, mov_list, valid, lengths, save_path = save_path) # build xarray dataset and save to zarr store
-
+        
+        file_outputs['movement_events'] = {'path': str(me_output_path), 'file_type': str(me_output_path.suffix), 'attrs':{}}
+        file_outputs['movement_features'] = {'path': str(save_path / 'movement_features.zarr'), 'file_type': '.zarr', 'attrs': {}} # future revamp of save structure
+    
+    file_outputs['pose_data'] = {'path': str(pose_output_path), 'file_type': str(pose_output_path.suffix), 'attrs': {}}
+    
     # create lazy pose object
     pose_processed_obj = PoseProcessed(
         pose_output_path = pose_output_path,
@@ -118,4 +125,4 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
         movement_output_path = me_output_path
     )
 
-    return pose_processed_obj
+    return pose_processed_obj, file_outputs
