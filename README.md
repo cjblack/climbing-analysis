@@ -64,10 +64,10 @@ neurokinematics/
 ```
 
 ## Documentation
-- [Pose processing](docs/pose.md)
-- [Spike sorting](docs/spikes.md)
-- [LFP processing](docs/lfp.md)
-- [Multi-modal](docs/multi_modal.md)
+- [Pose](docs/pose.md)
+- [Spike](docs/spikes.md)
+- [LFP](docs/lfp.md)
+- [Multimodal](docs/multi_modal.md)
 - [Data](docs/data.md)
 - [Configs](configs/README.md)
 - [In development](docs/development.md)
