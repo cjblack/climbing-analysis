@@ -254,7 +254,8 @@ class ExperimentSession:
                 'pose': self.pose_cfg,
                 'spikes': self.sorting_cfg,
                 'lfp': self.lfp_preprocessing_cfg,
-                'multimodal': self.multimodal_cfg
+                'multimodal': self.multimodal_cfg,
+                'models': self.models_cfg
                 }
             }
         
