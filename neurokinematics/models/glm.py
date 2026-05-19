@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -15,18 +16,18 @@ from statsmodels import __version__ as sm_version
 
 import xarray as xr
 
-from neurokinematics.io import load_zarr, save_model, save_yaml, save_dataset
+from neurokinematics.io import load_zarr, save_model, save_yaml, save_dataset, save_dataframe
 from neurokinematics import __version__ as nk_version
 
 
-def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Dataset, glm_params: dict | None = None, save_path: str | Path | None = None):
+def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Dataset, params: dict | None = None, save_path: str | Path | None = None):
     """Create glm model from movement and spike data
 
     Args:
         pose_ds (str | Path | xr.Dataset): Path to or xarray dataset containing binned movement data. If str or Path, then the file must be a zarr store ending in '.zarr'
         spike_ds (str | Path | xr.Dataset): Path to or xarray dataset containing binned spike data. If str or Path, then the file must be a zarr store ending in '.zarr'
-        glm_params (dict | None, optional): Dictionary containing parameters for running GLM. Format is:
-                glm_params = {
+        params (dict | None, optional): Dictionary containing parameters for running GLM. Format is:
+                params = {
                     'node': str,
                     'type': str,
                     'features': {
@@ -54,7 +55,7 @@ def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Datas
         else:
             raise ValueError('Accepted file formats are: ".zarr".')
     else:
-        pose_ds_str = None
+        pose_ds_str = params.get('input_data', {}).get('pose_dataset', None)
     
     if isinstance(spike_ds, (str, Path)):
         spike_ds_str = str(spike_ds)
@@ -64,17 +65,19 @@ def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Datas
         else:
             raise ValueError('Accepted file formats are: ".zarr".')
     else:
-        pose_ds_str = None
+        spike_ds_str = params.get('input_data', {}).get('spike_dataset', None)
 
-    if glm_params is None:
-        glm_params = {}
+    if params is None:
+        params = {}
 
-    glm_params['input_data'] = {'pose_dataset': pose_ds_str, 'spike_dataset': spike_ds_str}
-    node = glm_params.get("node", pose_ds.node.values[0]) #glm_params['node']
-    glm_type = glm_params.get("type", 'encoder')  #glm_params['type']
-    pose_feature = glm_params.get("features", {}).get('pose', ['position_y']) #glm_params['features']['pose']
-    spike_feature = glm_params.get("features", {}).get('spikes', 'spike_counts') #glm_params['features']['spikes']
-    unit = glm_params.get("unit", 0)
+    params['input_data'] = {'pose_dataset': pose_ds_str, 'spike_dataset': spike_ds_str}
+    node = params.get("pose", {}).get("node", pose_ds.node.values[0]) #glm_params['node']
+    glm_type = params.get("type", 'encoder')  #glm_params['type']
+    pose_feature = params.get("pose", {}).get('features', ['position_y']) #glm_params['features']['pose']
+    spike_feature = params.get("spikes", {}).get('features', 'spike_counts') #glm_params['features']['spikes']
+    if isinstance(spike_feature, list):
+        spike_feature = spike_feature[0]
+    unit = params.get("spikes", {}).get('unit', 0)
     time_bins = spike_ds.time_bin.values
 
     attrs = {
@@ -82,8 +85,8 @@ def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Datas
         "unit": unit,
         "node": node,
         "features": {
-            'pose_features': pose_feature,
-            'spike_features': spike_feature
+            'pose': pose_feature,
+            'spikes': spike_feature
         }
     }
 
@@ -141,32 +144,159 @@ def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Datas
 
     predicted = results.predict(X_model)
 
+    params['packages'] = {'statsmodels': sm_version, 'scipy': scipy_version, 'neurokinematics': nk_version}
+    params['metrics'] = {'aic': float(results.aic), 'log_likelihood': float(results.llf)}
+
     outputs = {
         'predicted': predicted, 
         'y': sy, 
         'event_idx': event_idx, 
         'time_idx': time_idx, 
         'time_bins':time_bins, 
-        'glm_params': glm_params
+        'attrs': attrs,
+        'params': params
         }
 
     if save_path:
         save_path = Path(save_path)
         created_on = datetime.now().strftime('%Y%m%d_%H_%M_%S') # get creation date
         save_path = save_path / 'glm' / glm_type / f'{node}_to_unit_{unit}_{created_on}'
-        save_path.mkdir(parents=True, exist_ok=True)
-        glm_params['packages'] = {'statsmodels': sm_version, 'scipy': scipy_version, 'neurokinematics': nk_version}
-        glm_params['metrics'] = {'aic': float(results.aic), 'log_likelihood': float(results.llf)}
+        #save_path.mkdir(parents=True, exist_ok=True)
+        save_glm_results(model, results, outputs, params, save_path)
         
         # model
-        model_save_path = save_path / "glm_model.joblib"
-        params_save_path = save_path / "glm_params.yaml"
-        save_model(model, model_save_path, method = 'joblib')
-        save_yaml(glm_params, params_save_path)
+        #model_save_path = save_path / "glm_model.joblib"
+        #params_save_path = save_path / "glm_params.yaml"
+        #save_model(model, model_save_path, method = 'joblib')
+        #save_yaml(params, params_save_path)
 
-        ds = build_glm_dataset(outputs, attrs = attrs, save_path = save_path)
+        #ds = build_glm_dataset(outputs, attrs = attrs, save_path = save_path)
 
     return model, results, outputs
+
+def save_glm_results(model, results, outputs, params, save_path):
+    save_path = Path(save_path)
+    save_path.mkdir(parents=True, exist_ok=True)
+
+    model_save_path = save_path / 'glm_model.joblib'
+    params_save_path = save_path / 'glm_params.yaml'
+    save_model(model, model_save_path, method = 'joblib')
+    save_yaml(params, params_save_path)
+    _ = build_glm_dataset(outputs, attrs=outputs['attrs'], save_path=save_path)
+
+
+def build_glm_model_sets(features, mode: str = "full"):
+    if mode == "single_and_full":
+        model_sets = {
+            feat: [feat] for feat in features
+        }
+        model_sets['full'] = features
+
+    elif mode == "single":
+        model_sets = {
+            feat: [feat] for feat in features
+        }
+    elif mode == 'full':
+        model_sets = {
+            'full': features
+        }
+    elif mode == 'drop_one':
+        model_sets = {
+            'full': features
+        }
+        for feat in features:
+            model_sets[f"drop_{feat}"] = [
+                f for f in features if f != feat
+            ]
+    else:
+        raise ValueError(
+            "mode must be one of: " \
+            "'single', 'full', 'single_and_full', 'drop_one'"
+        )
+    
+    return model_sets
+
+
+def compare_glm_models(pose_ds, spike_ds, params, save_path):
+
+    created_on = datetime.now().strftime('%Y%m%d_%H_%M_%S')
+
+    if isinstance(pose_ds, (str, Path)):
+        pose_ds_str = str(pose_ds)
+        pose_ds = Path(pose_ds)
+        if pose_ds.suffix == '.zarr':
+            pose_ds = load_zarr(pose_ds, method='xarray')
+        else:
+            raise ValueError('Accepted file formats are: ".zarr".')
+    else:
+        pose_ds_str = None
+    
+    if isinstance(spike_ds, (str, Path)):
+        spike_ds_str = str(spike_ds)
+        spike_ds = Path(spike_ds)
+        if spike_ds.suffix == '.zarr':
+            spike_ds = load_zarr(spike_ds, method='xarray')
+        else:
+            raise ValueError('Accepted file formats are: ".zarr".')
+    else:
+        pose_ds_str = None
+
+
+
+    params['input_data'] = {'pose_dataset': pose_ds_str, 'spike_dataset': spike_ds_str}
+    glm_type = params['type']
+    if glm_type == 'encoder':
+        mode = params.get('comparison', {}).get('mode', 'full')
+        node = params.get('pose', {}).get('node', pose_ds.node.values[0])
+        unit = params.get('spikes', {}).get('unit', 0)
+        features = params.get('pose', {}).get('features', ['position_x'])
+        glm_save_directory = f'comparison_{mode}_{node}_unit_{unit}_{created_on}'
+    model_sets = build_glm_model_sets(features, mode=mode)
+
+    if save_path:
+        save_path = Path(save_path) / 'glm' / glm_type / glm_save_directory 
+
+    fitted_models = {}
+    summary_rows = []
+
+    for model_name, feature_set in model_sets.items():
+        params_ = deepcopy(params)
+        params_['pose']['features'] = feature_set
+        params_['comparison_model'] = model_name
+
+        model, results, outputs = create_glm(
+            pose_ds,
+            spike_ds,
+            params = params_,
+        )
+        fitted_models[model_name] = {
+            'model': model,
+            'results': results,
+            'outputs': outputs,
+            'params': params_
+        }
+        if save_path:
+            save_glm_results(model, results, outputs, params, save_path / model_name)
+            
+        summary_rows.append(
+            {
+                'model_name': model_name,
+                'features': ", ".join(feature_set),
+                'aic': float(results.aic),
+                'log_likelihood': float(results.llf),
+
+            }
+        )
+
+    summary = pd.DataFrame(summary_rows)
+    if save_path:
+        save_dataframe(summary, save_path / 'summary.csv', storage_format = 'csv')
+
+    
+    return fitted_models, summary
+
+
+
 
 def plot_glm_results(spikes_binned, predicted_rate, bin_width):
     time = np.arange(len(spikes_binned)) * bin_width
