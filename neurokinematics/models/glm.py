@@ -5,6 +5,8 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from tqdm import tqdm
+
 from scipy.optimize import minimize
 from scipy.special import gammaln  # log gamma for log(y!)
 from scipy.signal import decimate, savgol_filter
@@ -258,7 +260,7 @@ def compare_glm_models(pose_ds, spike_ds, params, save_path):
     fitted_models = {}
     summary_rows = []
 
-    for model_name, feature_set in model_sets.items():
+    for model_name, feature_set in tqdm(model_sets.items(), total=len(model_sets), desc="Fitting models", unit="models"):
         params_ = deepcopy(params)
         params_['pose']['features'] = feature_set
         params_['comparison_model'] = model_name
