@@ -1,14 +1,24 @@
 glm:
   preset:
-  pose_features:
-    - position_xy
-    - velocity_xy
-    - acceleration_xy
-    - speed
-  split:
-    method: event
-    test_size: 0.2
-    seed: 0
-  comparison:
-    mode: single_and_full
+    type: encoder
+    pose:
+     features:
+      - position_x
+      - position_y
+      - velocity_x
+      - velocity_y
+      - acceleration_x 
+      - acceleration_y
+      - speed
+     node: r_hindpaw
+    spikes:
+     features:
+      - spike_counts
+     unit: 37
+    split:
+      method: event
+      test_size: 0.2
+      seed: 0
+    comparison:
+      mode: single_and_full
 
