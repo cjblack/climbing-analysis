@@ -35,6 +35,7 @@ from pathlib import Path
 import shutil
 from datetime import datetime
 import warnings
+from copy import deepcopy
 
 import xmltodict
 import pandas as pd
@@ -174,6 +175,7 @@ class ExperimentSession:
         session.lfp_preprocessing_cfg = cfg['configs']['lfp']
         session.multimodal_cfg = cfg['configs']['multimodal']
         session.sorting_cfg = cfg['configs']['spikes']
+        session.models_cfg = cfg['configs']['models']
 
         # get metadata
         session.metadata = cfg.get('session_metadata', {})
@@ -623,7 +625,15 @@ class ExperimentSession:
             return binned_pose, binned_spikes, unbinned_spikes
         
     ### * run model * ###
-    def fit_unit_model(self, model: str, x_data: str, y_data: str, params: dict):
+    def fit_unit_model(self, model: str, x_data: str, y_data: str, preset: bool = True, params: dict | None = None):
+
+        if preset:
+            params_ = deepcopy(self.models_cfg[model]['preset'])
+            if params is not None:
+                params = params_ | params # merge params
+            else:
+                params = params_
+
 
         model_fn = MODEL_REGISTRY[model]
         model_fn(x_data, y_data, params, self.dirs['models'])
