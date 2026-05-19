@@ -11,6 +11,9 @@ from scipy.signal import decimate, savgol_filter
 from sklearn.model_selection import KFold  # optional: requires scikit-learn; if unavailable, use custom CV
 from scipy import __version__ as scipy_version
 
+from sklearn.preprocessing import StandardScaler
+from sklearn import __version__ as sk_version
+
 import statsmodels.api as sm
 from statsmodels import __version__ as sm_version
 
@@ -72,6 +75,7 @@ def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Datas
 
     params['input_data'] = {'pose_dataset': pose_ds_str, 'spike_dataset': spike_ds_str}
     node = params.get("pose", {}).get("node", pose_ds.node.values[0]) #glm_params['node']
+    family = params.get("family", 'Poisson')
     glm_type = params.get("type", 'encoder')  #glm_params['type']
     pose_feature = params.get("pose", {}).get('features', ['position_y']) #glm_params['features']['pose']
     spike_feature = params.get("spikes", {}).get('features', 'spike_counts') #glm_params['features']['spikes']
@@ -95,7 +99,7 @@ def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Datas
     spike_sub = spike_ds.where(mask, drop=True)
 
     # pose feature
-    pos = pose_sub.position.sel(node=node)
+    #pos = pose_sub.position.sel(node=node)
     predictors = dict()
     features = []
     for pf in pose_feature:
@@ -137,14 +141,16 @@ def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Datas
     event_idx = event_idx[keep]
     time_idx = time_idx[keep]
 
-    X_model = sm.add_constant(X)
-    model = sm.GLM(sy, X_model, family=sm.families.Poisson())
+    scaler = StandardScaler()
+    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns = X.columns, index = X.index)
+    X_model = sm.add_constant(X_scaled, has_constant="add")
+    model = sm.GLM(sy, X_model, family=getattr(sm.families, family)())
 
     results = model.fit()
 
     predicted = results.predict(X_model)
 
-    params['packages'] = {'statsmodels': sm_version, 'scipy': scipy_version, 'neurokinematics': nk_version}
+    params['packages'] = {'statsmodels': sm_version, 'scipy': scipy_version, 'sklearn': sk_version, 'neurokinematics': nk_version}
     params['metrics'] = {'aic': float(results.aic), 'log_likelihood': float(results.llf)}
 
     outputs = {
@@ -161,16 +167,8 @@ def create_glm(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Datas
         save_path = Path(save_path)
         created_on = datetime.now().strftime('%Y%m%d_%H_%M_%S') # get creation date
         save_path = save_path / 'glm' / glm_type / f'{node}_to_unit_{unit}_{created_on}'
-        #save_path.mkdir(parents=True, exist_ok=True)
         save_glm_results(model, results, outputs, params, save_path)
         
-        # model
-        #model_save_path = save_path / "glm_model.joblib"
-        #params_save_path = save_path / "glm_params.yaml"
-        #save_model(model, model_save_path, method = 'joblib')
-        #save_yaml(params, params_save_path)
-
-        #ds = build_glm_dataset(outputs, attrs = attrs, save_path = save_path)
 
     return model, results, outputs
 
@@ -244,6 +242,7 @@ def compare_glm_models(pose_ds, spike_ds, params, save_path):
 
 
     params['input_data'] = {'pose_dataset': pose_ds_str, 'spike_dataset': spike_ds_str}
+    plot_on = params['plot']
     glm_type = params['type']
     if glm_type == 'encoder':
         mode = params.get('comparison', {}).get('mode', 'full')
