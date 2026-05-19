@@ -1,14 +1,14 @@
-model:
-  glm:
-    pose_features:
-     - position_xy
-     - velocity_xy
-     - acceleration_xy
-     - speed
-    split:
-     method: event
-     test_size: 0.2
-     seed: 0
-    comparison:
-      mode: single_and_full
+glm:
+  preset:
+  pose_features:
+    - position_xy
+    - velocity_xy
+    - acceleration_xy
+    - speed
+  split:
+    method: event
+    test_size: 0.2
+    seed: 0
+  comparison:
+    mode: single_and_full
 
