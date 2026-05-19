@@ -1,6 +1,7 @@
 glm:
   preset:
     type: encoder
+    family: NegativeBinomial
     pose:
      features:
       - position_x
@@ -21,4 +22,5 @@ glm:
       seed: 0
     comparison:
       mode: single_and_full
+    plot: true
 

@@ -31,6 +31,18 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
         spike_ds (xr.Dataset): xarray dataset containing binned spikes
         pose_ds (xr.Dataset): xarray dataset containing resampled movement data
         unbinned_spikes_df (df.DataFrame): Pandas dataframe containing unbinned spike times
+
+    Example:
+        >>> spike_ds, pose_ds, unbinned_spikes_df = get_movement_aligned_features(
+        ...     alignment = 'path/to/video_alignment.csv',
+        ...     sorter = 'path/to/ephys/sorter',
+        ...     movement_dataset = 'path/to/movement_features.zarr',
+        ...     save_path = {
+        ...            'pose': 'path/to/pose/outputs',
+        ...            'spikes': 'path/to/spikes/outputs',
+        ...     },
+        ...     bin_size = 0.05
+        ... )
     """
 
     # load sorter if sorter is directory
