@@ -1,4 +1,4 @@
-from .glm import create_glm, compare_glm_models
+from .glm import create_glm_decoder, create_glm_encoder, compare_glm_models
 
 
 
