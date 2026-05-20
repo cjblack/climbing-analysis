@@ -1,7 +1,7 @@
 glm:
-  preset:
+  encoder_preset:
     type: encoder
-    family: NegativeBinomial
+    family: Poisson
     pose:
      features:
       - position_x
@@ -15,7 +15,8 @@ glm:
     spikes:
      features:
       - spike_counts
-     unit: 37
+     unit: 
+      - 37
     split:
       method: event
       test_size: 0.2
@@ -23,4 +24,23 @@ glm:
     comparison:
       mode: single_and_full
     plot: true
-
+  decoder_preset:
+    type: decoder
+    family: Gaussian
+    pose:
+     features:
+      - position_y
+     node: r_hindpaw
+    spikes:
+     features:
+      - spike_counts
+     unit:
+      - 37
+      - 25
+    split:
+     method: event
+     test_size: 0.2
+     seed: 0
+    comparison:
+     mode: single
+    plot: true
