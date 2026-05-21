@@ -85,7 +85,7 @@ class ExperimentSession:
         ... )
         >>> session.preprocess_and_align()
     """
-    def __init__(self, session_id: str, ephys_data_path: Path | str, pose_data_path: Path | str, output_root_path: Path | str | None = None, cfg: str ='demo_session.yaml'):
+    def __init__(self, session_id: str, ephys_data_path: Path | str | None = None, pose_data_path: Path | str | None = None, output_root_path: Path | str | None = None, cfg: str ='demo_session.yaml'):
   
         # set creation date
         self.created_on = datetime.now().isoformat()
@@ -94,14 +94,28 @@ class ExperimentSession:
         self.session_id = session_id
 
         # ensure input paths are Path
-        self.ephys_data_path = Path(ephys_data_path)
-        self.pose_data_path = Path(pose_data_path)
+        if (ephys_data_path == None) & (pose_data_path==None):
+            raise ValueError("ExperimentSession requires either a 'pose_data_path', an 'ephys_data_path', or both.")
+        
+        if isinstance(ephys_data_path, (str, Path)):
+            self.ephys_data_path = Path(ephys_data_path)
+            if not self.ephys_data_path.exists():
+                raise FileNotFoundError(f"Ephys path does not exist: {self.ephys_data_path}")
+        else:
+            self.ephys_data_path = ephys_data_path
+
+        if isinstance(pose_data_path, (str, Path)):
+            self.pose_data_path = Path(pose_data_path)
+            if not self.pose_data_path.exists():
+                raise FileNotFoundError(f"Pose path does not exist: {self.pose_data_path}")
+        else:
+            self.pose_data_path = pose_data_path
         
         # then ensure that paths exist...
-        if not self.ephys_data_path.exists():
-            raise FileNotFoundError(f"Ephys path does not exist: {self.ephys_data_path}")
-        if not self.pose_data_path.exists():
-            raise FileNotFoundError(f"Pose path does not exist: {self.pose_data_path}")
+        # if not self.ephys_data_path.exists():
+        #     raise FileNotFoundError(f"Ephys path does not exist: {self.ephys_data_path}")
+        # if not self.pose_data_path.exists():
+        #     raise FileNotFoundError(f"Pose path does not exist: {self.pose_data_path}")
         
         # load configs
         if cfg is not None:
@@ -242,8 +256,8 @@ class ExperimentSession:
                 "nk_version": nk_version,
                 "session_id": self.session_id,
                 "created_on": self.created_on,
-                "ephys_data_path": str(self.ephys_data_path),
-                "pose_data_path": str(self.pose_data_path),
+                "ephys_data_path": str(self.ephys_data_path) if isinstance(self.ephys_data_path, (str, Path)) else None, # save as str if path, otherwise save as None
+                "pose_data_path": str(self.pose_data_path) if isinstance(self.pose_data_path, (str, Path)) else None, # save as str if path, otherwise save as None
                 "output_root": str(self.output_root),
                 "session_path": str(self.session_path),
                 "session_outputs_path": "session_outputs.yaml",
