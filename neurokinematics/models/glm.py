@@ -52,6 +52,9 @@ def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
     """
 
 
+    if params is None:
+        params = {}
+
     if isinstance(pose_ds, (str, Path)):
         pose_ds_str = str(pose_ds)
         pose_ds = Path(pose_ds)
@@ -61,7 +64,7 @@ def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
             raise ValueError('Accepted file formats are: ".zarr".')
     else:
         pose_ds_str = params.get('input_data', {}).get('pose_dataset', None)
-    
+
     if isinstance(spike_ds, (str, Path)):
         spike_ds_str = str(spike_ds)
         spike_ds = Path(spike_ds)
@@ -71,9 +74,6 @@ def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
             raise ValueError('Accepted file formats are: ".zarr".')
     else:
         spike_ds_str = params.get('input_data', {}).get('spike_dataset', None)
-
-    if params is None:
-        params = {}
 
     params['input_data'] = {'pose_dataset': pose_ds_str, 'spike_dataset': spike_ds_str}
     node = params.get("pose", {}).get("node", pose_ds.node.values[0]) #glm_params['node']
@@ -200,6 +200,9 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
     """
 
 
+    if params is None:
+        params = {}
+
     if isinstance(pose_ds, (str, Path)):
         pose_ds_str = str(pose_ds)
         pose_ds = Path(pose_ds)
@@ -209,7 +212,7 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
             raise ValueError('Accepted file formats are: ".zarr".')
     else:
         pose_ds_str = params.get('input_data', {}).get('pose_dataset', None)
-    
+
     if isinstance(spike_ds, (str, Path)):
         spike_ds_str = str(spike_ds)
         spike_ds = Path(spike_ds)
@@ -219,9 +222,6 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
             raise ValueError('Accepted file formats are: ".zarr".')
     else:
         spike_ds_str = params.get('input_data', {}).get('spike_dataset', None)
-
-    if params is None:
-        params = {}
 
     params['input_data'] = {'pose_dataset': pose_ds_str, 'spike_dataset': spike_ds_str}
     node = params.get("pose", {}).get("node", pose_ds.node.values[0]) #glm_params['node']
@@ -271,7 +271,7 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
         spike_sub.valid.fillna(False).astype(bool)#.isel(time_bin = slice(1, None))
     )
 
-    sy = pose_sub[pose_feature].sel(node=node).sel(coord=pose_coord)#spikes.values.reshape(-1)
+    sy = pose_sub[pose_feature].sel(node=node).sel(coord=pose_coord).values.reshape(-1)
 
     valid_flat = valid.values.reshape(-1)
     finite = np.isfinite(X).all(axis=1) & np.isfinite(sy)
@@ -383,7 +383,6 @@ def compare_glm_models(x_ds, y_ds, params, save_path):
 
 
     params['input_data'] = {'x_dataset': x_ds_str, 'y_dataset': y_ds_str}
-    plot_on = params['plot']
     glm_type = params['type']
     mode = params.get('comparison', {}).get('mode', 'full')
 
@@ -392,9 +391,9 @@ def compare_glm_models(x_ds, y_ds, params, save_path):
         unit = params.get('spikes', {}).get('unit', 0)
         features = params.get('pose', {}).get('features', ['position_x'])
         glm_save_directory = f'comparison_{mode}_{node}_unit_{unit}_{created_on}'
+    else:
+        raise NotImplementedError(f"compare_glm_models only supports glm_type='encoder', got '{glm_type}'.")
 
-    #if glm_type == 'decoder':
-         
     model_sets = build_glm_model_sets(features, mode=mode)
 
     if save_path:
@@ -420,7 +419,7 @@ def compare_glm_models(x_ds, y_ds, params, save_path):
             'params': params_
         }
         if save_path:
-            save_glm_results(model, results, outputs, params, save_path / model_name)
+            save_glm_results(model, results, outputs, params_, save_path / model_name)
             
         summary_rows.append(
             {
