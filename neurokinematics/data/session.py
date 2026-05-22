@@ -33,10 +33,17 @@ These classes will extend the base session interface with experiment-specific pr
 
 from pathlib import Path
 import shutil
+from datetime import datetime
+import warnings
+from copy import deepcopy
+
 import xmltodict
 import pandas as pd
 import yaml
 import dask.dataframe as dd
+
+# version
+from neurokinematics import __version__ as nk_version
 
 from neurokinematics.decorators import log_call
 
@@ -59,6 +66,10 @@ from neurokinematics.ephys.lfp.plotting import plot_movement_erps_probe
 
 # multimodal
 from neurokinematics.multi_modal.alignment import get_camera_events, align_movements_to_ephys
+from neurokinematics.multi_modal.features import get_movement_aligned_features
+
+# models
+from neurokinematics.models.registry import MODEL_REGISTRY
 
 
 
@@ -74,20 +85,37 @@ class ExperimentSession:
         ... )
         >>> session.preprocess_and_align()
     """
-    def __init__(self, session_id: str, ephys_data_path: Path | str, pose_data_path: Path | str, output_root_path: Path | str | None = None, cfg: str ='demo_session.yaml'):
+    def __init__(self, session_id: str, ephys_data_path: Path | str | None = None, pose_data_path: Path | str | None = None, output_root_path: Path | str | None = None, cfg: str ='demo_session.yaml'):
   
+        # set creation date
+        self.created_on = datetime.now().isoformat()
+
         # set session id
         self.session_id = session_id
 
         # ensure input paths are Path
-        self.ephys_data_path = Path(ephys_data_path)
-        self.pose_data_path = Path(pose_data_path)
+        if (ephys_data_path == None) & (pose_data_path==None):
+            raise ValueError("ExperimentSession requires either a 'pose_data_path', an 'ephys_data_path', or both.")
+        
+        if isinstance(ephys_data_path, (str, Path)):
+            self.ephys_data_path = Path(ephys_data_path)
+            if not self.ephys_data_path.exists():
+                raise FileNotFoundError(f"Ephys path does not exist: {self.ephys_data_path}")
+        else:
+            self.ephys_data_path = ephys_data_path
+
+        if isinstance(pose_data_path, (str, Path)):
+            self.pose_data_path = Path(pose_data_path)
+            if not self.pose_data_path.exists():
+                raise FileNotFoundError(f"Pose path does not exist: {self.pose_data_path}")
+        else:
+            self.pose_data_path = pose_data_path
         
         # then ensure that paths exist...
-        if not self.ephys_data_path.exists():
-            raise FileNotFoundError(f"Ephys path does not exist: {self.ephys_data_path}")
-        if not self.pose_data_path.exists():
-            raise FileNotFoundError(f"Pose path does not exist: {self.pose_data_path}")
+        # if not self.ephys_data_path.exists():
+        #     raise FileNotFoundError(f"Ephys path does not exist: {self.ephys_data_path}")
+        # if not self.pose_data_path.exists():
+        #     raise FileNotFoundError(f"Pose path does not exist: {self.pose_data_path}")
         
         # load configs
         if cfg is not None:
@@ -110,6 +138,16 @@ class ExperimentSession:
         # create session directory
         self.session_path = self.output_root / f"{self.session_id}_nk"
         self.dirs = create_session_dirs(self.session_path)
+
+        # create outputs monitor
+        self.session_outputs = {}
+        self.session_outputs_path = self.session_path / 'session_outputs.yaml'
+
+        # instantiate blank output file
+        if not self.session_outputs_path.exists():
+            with open(self.session_outputs_path, "w") as f:
+                yaml.safe_dump(self.session_outputs, f)
+
 
         if cfg is not None:
             self._save_session_config()
@@ -151,6 +189,7 @@ class ExperimentSession:
         session.lfp_preprocessing_cfg = cfg['configs']['lfp']
         session.multimodal_cfg = cfg['configs']['multimodal']
         session.sorting_cfg = cfg['configs']['spikes']
+        session.models_cfg = cfg['configs']['models']
 
         # get metadata
         session.metadata = cfg.get('session_metadata', {})
@@ -159,6 +198,18 @@ class ExperimentSession:
 
         # set paths
         session.session_path = session_path
+
+        # load session outputs
+        outputs_path = runtime.get("session_outputs_path", "session_outputs.yaml")
+        session.session_outputs_path = session_path / outputs_path
+
+        if session.session_outputs_path.exists():
+            with open(session.session_outputs_path, "r") as f:
+                session.session_outputs = yaml.safe_load(f) or {}
+        else:
+            session.session_outputs = {}
+            with open(session.session_outputs_path, "w") as f:
+                yaml.safe_dump(session.session_outputs, f, sort_keys = False)
 
         # recreate dirs
         if 'session_dirs' in runtime:
@@ -194,6 +245,7 @@ class ExperimentSession:
         self.pose_cfg = load_config(cfg_group['pose'], config_type='pose') # pose config
         self.lfp_preprocessing_cfg = load_config(cfg_group['lfp'], config_type='lfp') # lfp preprocessing config
         self.multimodal_cfg = load_config(cfg_group['multi_modal'], config_type='multimodal') # multimodal alignment config
+        self.models_cfg = load_config(cfg_group['models'], config_type = 'models')
 
     def _save_session_config(self):
         """Freezes session config so session can be loaded at another time
@@ -201,11 +253,14 @@ class ExperimentSession:
 
         cfg = {
             'session_runtime':{
+                "nk_version": nk_version,
                 "session_id": self.session_id,
-                "ephys_data_path": str(self.ephys_data_path),
-                "pose_data_path": str(self.pose_data_path),
+                "created_on": self.created_on,
+                "ephys_data_path": str(self.ephys_data_path) if isinstance(self.ephys_data_path, (str, Path)) else None, # save as str if path, otherwise save as None
+                "pose_data_path": str(self.pose_data_path) if isinstance(self.pose_data_path, (str, Path)) else None, # save as str if path, otherwise save as None
                 "output_root": str(self.output_root),
                 "session_path": str(self.session_path),
+                "session_outputs_path": "session_outputs.yaml",
                 "session_dirs": {key: str(val) for key, val in self.dirs.items()}
                 },
             'configs':{
@@ -213,7 +268,8 @@ class ExperimentSession:
                 'pose': self.pose_cfg,
                 'spikes': self.sorting_cfg,
                 'lfp': self.lfp_preprocessing_cfg,
-                'multimodal': self.multimodal_cfg
+                'multimodal': self.multimodal_cfg,
+                'models': self.models_cfg
                 }
             }
         
@@ -241,7 +297,49 @@ class ExperimentSession:
                 'node_list': self.pose_cfg['movement_detection']['node_list']
             }
         }
+
+    def _record_session_output(self, file_outputs: dict):#name: str, path: str | Path, file_type: str | None = None, attrs: dict | None = None):
+        """Records outputs created during session.
+
+        Args:
+            name (str): _description_
+            path (str | Path): _description_
+            file_type (str | None, optional): _description_. Defaults to None.
+            attrs (dict | None, optional): _description_. Defaults to None.
+        """
+        for key, val in file_outputs.items():
+            name = key
+            path = Path(val['path'])
+            file_type = val['file_type']
+            attrs = val['attrs']
+
+            # need to create a resolver...
+            try:
+                stored_path = path.relative_to(
+                    self.session_path
+                )
+            except ValueError:
+                stored_path = path
+
+            if name in self.session_outputs:
+                warnings.warn(
+                    f"Overwriting existing output: {name}"
+                )
+
+            self.session_outputs[name] = {
+                "path": str(stored_path),
+                "created": datetime.now().isoformat(),
+                "nk_version": nk_version,
+                "file_type": file_type,
+                "attrs": attrs or {}
+            }
+
+        session_outputs_path = self.session_path / "session_outputs.yaml"
+
+        with open(session_outputs_path, "w") as f:
+            yaml.safe_dump(self.session_outputs, f, sort_keys=False)
     
+
     def _handle_existing_output(self, path: Path, mode: str):
         """Deals with processing/alignment calls if session was already created to avoid accidental overwriting
 
@@ -303,11 +401,15 @@ class ExperimentSession:
         if not should_run:
             return {"exists": True, "path": expected_output}
         
-        self.pose_processed = process_sleap(
+        self.pose_processed, file_outputs = process_sleap(
             data_path = self.pose_data_path,
             pose_cfg = self.cfg['configs']['pose'],
             save_path = self.dirs['pose']
         )
+
+        self._record_session_output(file_outputs)
+
+
     
     @log_call(label='spike sorting', type='run')
     def run_spike_sorting(self, mode: str = "skip"):
@@ -511,6 +613,49 @@ class ExperimentSession:
             save_path = self.dirs['spikes']
         )
 
+    ### * extract features * ###
+    def bin_movements_and_spikes(self, bin_size: float = 0.02, return_data: bool = False):
+
+        movement_dataset = self.dirs['pose'] / 'movement_features.zarr'
+        alignment = self.dirs['alignment'] / 'video_alignment.csv'
+        sorter = self.dirs['spikes'] / 'kilosort4' / 'phy_output'
+        
+        required = [
+            movement_dataset,
+            alignment,
+            sorter
+        ]
+
+        missing = [p for p in required if not p.exists()]
+        if missing:
+            raise FileNotFoundError(
+                "Cannot extract binned data. Missing required files:\n"
+                + "\n".join(str(p) for p in missing)
+            )
+        
+        save_path = {'pose': self.dirs['pose'], 'spikes': self.dirs['spikes']}
+        binned_pose, binned_spikes, unbinned_spikes = get_movement_aligned_features(alignment = alignment, sorter = sorter, movement_dataset = movement_dataset, save_path=save_path, bin_size = bin_size)
+
+        if return_data:
+            return binned_pose, binned_spikes, unbinned_spikes
+        
+    ### * run model * ###
+    def fit_unit_model(self, model: str, x_data: str, y_data: str, preset: bool = True, params: dict | None = None):
+
+        if preset:
+            params_ = deepcopy(self.models_cfg[model]['preset'])
+            if params is not None:
+                params = params_ | params # merge params
+            else:
+                params = params_
+
+
+        model_fn = MODEL_REGISTRY[model]
+        model_fn(x_data, y_data, params, self.dirs['models'])
+
+
+
+    ### * plotting * ###
     def plot_spikes(self, unit_ids, plot_params, save_plots: bool = False):
 
         required = [

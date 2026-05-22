@@ -14,12 +14,15 @@ import glob
 
 import dask.dataframe as dd
 import pandas as pd
+import numpy as np
+
 
 from neurokinematics.io import load_config, save_dataframe
 from neurokinematics.pose.io import dask_batch_load_files
 from neurokinematics.data.processed import PoseProcessed
 from neurokinematics.pose.preprocessing.cleaning import *
 from neurokinematics.pose.movement_events import extract_movements
+from neurokinematics.pose.features import pad_movements, build_movement_dataset
 
 
 
@@ -33,9 +36,10 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
 
     Returns:
         PoseProcessed: Lightweight class storing metadata for preprocessing steps.
+        file_outputs (dict): Dictionary containing information for files created during call
 
     Example:
-        >>> pose_proc_obj = process_sleap(
+        >>> pose_proc_obj, file_outputs = process_sleap(
         ...     data_path = "path/to/converted/sleap/files"
         ...     pose_cfg = "demo_pose_cfg.yaml",
         ...     save_path = "path/to/outputs"
@@ -50,6 +54,9 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     file_format = cfg['pose_format']['file_format']
     sample_rate = cfg['pose_format']['frame_rate']
     movement_detection = cfg['movement_detection']
+
+    # create file outputs dictionary - currently testing
+    file_outputs = dict()
 
     # get / create paths
     data_path = Path(data_path)
@@ -88,15 +95,29 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
         node_list = movement_detection['node_list']
         nunique_cols = ddf.groupby(group_cols)[group_cols].nunique().__len__()
         movement_events = [None] * nunique_cols
+        movement_lists = []
         ddf_group = ddf.sort_values(sort_cols).groupby(group_cols)
         for (date_, trial_), df in ddf_group:
-            movement_events.append(extract_movements(df, node_list))
+            movements, movement_list = extract_movements(df, node_list)
+            movement_events.append(movements)
+            movement_lists.append(movement_list)
+            #movement_events.append(extract_movements(df, node_list))
     
         movement_events_df = pd.concat(movement_events)
         
         # save movement events
         save_dataframe(movement_events_df, me_output_path, 'pickle') # less modular ->pd.DataFrame.to_pickle(movement_events_df, me_output_path)
-
+        
+        # convert and save movement_lists
+        movement_lists = np.concat(movement_lists) # concatenate lists
+        padded, mov_list, valid, lengths = pad_movements(movement_lists) # pad movements so they are all the same length - easier for downstream analysis
+        movement_ds = build_movement_dataset(padded, mov_list, valid, lengths, save_path = save_path) # build xarray dataset and save to zarr store
+        
+        file_outputs['movement_events'] = {'path': str(me_output_path), 'file_type': str(me_output_path.suffix), 'attrs':{}}
+        file_outputs['movement_features'] = {'path': str(save_path / 'movement_features.zarr'), 'file_type': '.zarr', 'attrs': {}} # future revamp of save structure
+    
+    file_outputs['pose_data'] = {'path': str(pose_output_path), 'file_type': str(pose_output_path.suffix), 'attrs': {}}
+    
     # create lazy pose object
     pose_processed_obj = PoseProcessed(
         pose_output_path = pose_output_path,
@@ -106,4 +127,4 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
         movement_output_path = me_output_path
     )
 
-    return pose_processed_obj
+    return pose_processed_obj, file_outputs

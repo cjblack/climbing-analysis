@@ -2,7 +2,7 @@
 High-level I/O for saving and loading.
 
 Contains simplified versions of storage operations to reduce overhead across code. 
-Keep this module to saveas/load of file various file formats, set config paths, session directories, and associated checks.
+Keep this module to saveas/load of file various file formats, set config paths, session directories, and associated checks/validations.
 
 config paths
 
@@ -22,10 +22,14 @@ loading
 - yaml
 """
 
+
 from pathlib import Path
 import json
 import pickle
+import joblib
 import zarr
+import numpy as np
+import xarray as xr
 import pandas as pd
 import dask.dataframe as dd
 import yaml
@@ -42,6 +46,7 @@ CFG_PATHS = {
     'pose': CFG_ROOT_PATH / 'pose_cfg',
     'spksorting': CFG_ROOT_PATH / 'spk_sorting_cfg',
     'lfp': CFG_ROOT_PATH / 'lfp_cfg',
+    'models': CFG_ROOT_PATH / 'models_cfg',
     'session': CFG_ROOT_PATH / 'session_cfg'
 }
 
@@ -92,6 +97,50 @@ def _require_path(path: Path | str):
     return path
 
 
+### * helper * ###
+
+def _choose_dataframe_save_method(df: pd.DataFrame, threshold_mb: float = 500):
+    """Determines dataframe save method based on memory allocation
+
+    Args:
+        df (pd.DataFrame): Dataframe to save
+        threshold_mb (float, optional): Memory size cutoff for storing with pandas. Defaults to 500.
+
+    Returns:
+        method (str): Returns method to store dataframe as. Either "pandas" or "dask".
+    """
+    size_mb = df.memory_usage(deep=True).sum() / 1e6
+    
+    if size_mb > threshold_mb:
+        method = "dask"
+    else:
+        method = "pandas"
+
+    return method
+
+def _choose_npartitions(df: pd.DataFrame, target_partition_mb: float = 200, min_parititons: int = 1, max_partitions: int = 64):
+    """Determine number of partitions for storing dataframe with dask array. 
+
+    Args:
+        df (pd.DataFrame): Dataframe containing data to check
+        target_partition_mb (float, optional): Target size for partitions. Defaults to 200.
+        min_parititons (int, optional): Minimum number of partitions. Defaults to 1.
+        max_partitions (int, optional): Maximum number of partitions. Defaults to 64.
+
+    Returns:
+        npartitions (int): Suggested number of partitions to use
+    """
+    
+    size_mb = df.memory_usage(deep=True).sum() / 1e6 # get memory size in mb
+    npartitions = int(np.ceil(size_mb / target_partition_mb))
+    npartitions = max(min_partitions, npartitions)
+    npartitions = min(max_partitions, npartitions)
+
+    return npartitions
+
+
+
+
 ### * directory * ###
 
 def create_session_dirs(session_dir: str | Path, output_dir_name: str | Path ='neurokinematics'):
@@ -102,7 +151,7 @@ def create_session_dirs(session_dir: str | Path, output_dir_name: str | Path ='n
         output_dir_name (str | Path, optional): . Defaults to 'neurokinematics'.
 
     Returns:
-        dirs (dict): Dictionary of created directories with keys: 'root', 'pose', 'ephys', 'alignment', 'events', 'spikes', 'lfp', 'plots'
+        dirs (dict): Dictionary of created directories with keys: 'root', 'pose', 'ephys', 'results', 'alignment', 'events', 'spikes', 'lfp', 'plots', 'models', 'tables'
     """
     session_dir = Path(session_dir)
     output_dir = session_dir / output_dir_name
@@ -111,11 +160,14 @@ def create_session_dirs(session_dir: str | Path, output_dir_name: str | Path ='n
         "root": output_dir,
         "pose": output_dir / 'pose',
         "ephys": output_dir / 'ephys',
+        "results": output_dir / 'results',
         "alignment": output_dir / 'alignment',
         'events': output_dir / 'events',
         "spikes": output_dir / 'ephys' / 'spikes',
         "lfp": output_dir / 'ephys' / 'lfp',
-        "plots": output_dir / 'plots'
+        "plots": output_dir / 'results' /'plots',
+        "models": output_dir / 'results' / 'models',
+        "tables": output_dir / 'results' / 'tables'
     }
 
     for path in dirs.values():
@@ -137,6 +189,10 @@ def saveas_json(file_path: str, data: dict):
     with open(file_path, "w") as f:
         json.dump(data, f, indent=2)
 
+def save_yaml(data: dict, file_path: str):
+    with open(file_path, "w") as f:
+        yaml.safe_dump(data, f, sort_keys=False)
+
 def saveas_dataframe_to_csv(file_path: str, data: list):
     """Convert a list of dicts to a pandas dataframe and save it as a csv. Simplifies saving meta/chunk data.
 
@@ -147,14 +203,80 @@ def saveas_dataframe_to_csv(file_path: str, data: list):
     df = pd.DataFrame(data)
     df.to_csv(file_path, index=False)
 
-def save_dataframe(df, file_path, storage_format:str = 'csv', **kwargs):
+def save_dataframe(df, file_path, storage_format:str = 'csv', method: str | None = None, npartitions: int | None = None, **kwargs):
+
+    file_path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    file_path = Path(file_path)
 
     if storage_format == 'csv':
         df.to_csv(file_path)
+    
     elif storage_format == 'pickle':
         df.to_pickle(file_path)
+    
     elif storage_format == 'parquet':
-        df.to_parquet(file_path, **kwargs)
+        
+        if method is None:
+            method = _choose_dataframe_save_method(df)
+
+        if method == 'pandas':
+            df.to_parquet(file_path, **kwargs)
+    
+        elif method == 'dask':
+            if npartitions is None:
+                npartitions = _choose_npartitions(df)
+                ddf = dd.from_pandas(df, npartitions=npartitions)
+                ddf.to_parquet(file_path, **kwargs)
+    
+        else:
+            raise ValueError("method must be one of: 'pandas, 'dask', or None")
+    else:
+        raise ValueError("storage_format must be one of: 'csv', 'pickle', 'parquet'")
+    
+def save_model(model, file_path: Path | str, method: str = 'joblib', **kwargs):
+    file_path = Path(file_path)
+    
+    if method == 'joblib':
+        joblib.dump(model, file_path, **kwargs)
+    elif method == 'pickle':
+        with open(file_path, 'w') as f:
+            pickle.dump(model, f, **kwargs)
+
+    else:
+        raise ValueError("method must be one of: 'joblib', 'pickle'.")
+
+def save_dataset(ds: xr.Dataset, save_path: Path | str, chunks: dict | None = None, overwrite: bool = True):
+    """Save xarray dataset as zarr store
+
+    Args:
+        ds (xr.Dataset): Xarray dataset to be stored
+        save_path (Path | str): Save path of zarr store, must end in new folder name
+        chunks (dict | None, optional): Dictionary containing chunk relevant information. Defaults to None.
+        event_chunk (int, optional): Sets chunk size for events...current not in use. Defaults to 100.
+        overwrite (bool, optional): Determines whether zarr store is overwritten. Defaults to True.
+    """
+
+    save_path = Path(save_path)
+
+    if save_path.suffix != '.zarr':
+        save_path = save_path.with_suffix('.zarr')
+    
+    if chunks:
+        ds = ds.chunk(chunks = chunks)
+    
+    if overwrite:
+        mode = "w"
+        save_path.mkdir(parents = True, exist_ok = True)
+    
+    else:
+        mode = "w-"
+        save_path.mkdir(parents = True, exist_ok = False)
+
+    ds.to_zarr(save_path, mode=mode)
 
 
 
@@ -197,21 +319,29 @@ def load_json(file_path: str):
         data = json.load(f)
     return data
 
-def load_zarr(file_path: str, dataset: str, mode="r"):
+def load_zarr(file_path: str, dataset: str | None = None, mode: str ="r", method: str = "zarr"):
     """Open zarr store - load is a misnomer for utiltiy sake, using open allows lazy access to data.
 
     Args:
         file_path (str): Path pointing to zarr store
-        dataset (str): Folder within store to access.
+        dataset (str | None, optional): Folder within store to access.
         mode (str, optional): Reading mode for loading zarr store. Defaults to "r".
+        method (str, optional): Method used to load zarr data based on python package. Options are "zarr" and "xarray". Defaults to "zarr".
 
     Returns:
         data (zar.core.Array): Chunked and compressed data in zarr store.
-        dict: Dictionary containing zarr store attributes
+        dict (optional): Dictionary containing zarr store attributes
     """
-    root = zarr.open(file_path, mode = mode)
-    data = root[dataset]
-    return data, dict(root.attrs)
+
+    file_path = _require_path(file_path)
+    if method == "zarr":
+        root = zarr.open(file_path, mode = mode)
+        data = root[dataset]
+        return data, dict(root.attrs)
+    elif method == "xarray":
+        data = xr.open_zarr(file_path)
+        return data
+
 
 def load_memmap(file_path: str, shape: tuple, dtype: str ="float32", mode: str = "r"):
     """Load a numpy memmap file

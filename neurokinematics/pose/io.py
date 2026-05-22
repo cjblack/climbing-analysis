@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import numpy as np
@@ -11,9 +12,42 @@ from neurokinematics.pose.preprocessing.cleaning import fill_missing, remove_hig
 from pathlib import Path
 import pickle
 import h5py
+import xarray as xr
 
 dask.config.set({"dataframe.convert-string": False}) # reduces unnecessary conversions during dask compute calls
 
+
+
+### save ###
+def save_movement_dataset(ds: xr.Dataset, save_path: Path | str, chunks: dict | None = None, event_chunk: int = 100, overwrite: bool = True):
+    """Save xarray dataset as zarr store
+
+    Args:
+        ds (xr.Dataset): Xarray dataset to be stored
+        save_path (Path | str): Save path of zarr store, must end in new folder name
+        chunks (dict | None, optional): Dictionary containing chunk relevant information. Defaults to None.
+        event_chunk (int, optional): Sets chunk size for events...current not in use. Defaults to 100.
+        overwrite (bool, optional): Determines whether zarr store is overwritten. Defaults to True.
+    """
+    save_path = Path(save_path)
+    # ensure ending with .zarr
+    if save_path.suffix != '.zarr':
+        save_path = save_path.with_suffix('.zarr')
+
+    if chunks:
+        ds = ds.chunk(chunks = chunks)
+
+    if overwrite:
+        mode = "w"
+        save_path.mkdir(parents = True, exist_ok = True)
+    else:
+        mode = "w-"
+        save_path.mkdir(parents = True, exist_ok = False)
+
+    ds.to_zarr(save_path, mode=mode)
+
+
+### load ###
 def load_df_list(df_list_filename):
     dflist = []
     dfs = {}

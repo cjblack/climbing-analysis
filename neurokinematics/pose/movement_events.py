@@ -33,9 +33,10 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
 
     Returns:
         pd.DataFrame: Pandas DataFrame containing start, stop, and maximum velocity indices for each node.
+        movement_list (list): List containing movement trajectories for each node with respect to a reference node
 
     Example:
-        >>> movements_df = extract_movements(
+        >>> movements_df, movement_list = extract_movements(
         ...     df = pose_df,
         ...     node_list = ['node1', 'node2', 'node3', 'node4'],
         ...     )
@@ -43,8 +44,12 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
 
     stances = dict()
     movement_array = dict()
+    movement_list = []
     trial_ = df['Trial'].min()#int(df.attrs['Trial'].split('T')[-1])
     date_ = df['Date'].min()
+    id_ = df['Id'].min()
+    type_ = df['Type'].min()
+    frame_rate = df['SampleRate'].min()
     for i, node in enumerate(node_list):
         y=df[node+'_Y'].to_numpy()
         y_diff = np.abs(np.diff(y))#np.gradient(y))
@@ -54,20 +59,43 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
         start_ = []
         end_ = []
         max_ = []
-        # x_ = dict()
-        # y_ = dict()
-        for idxs in range(len(start_end)):
-            start_.append(start_end[idxs][0])
-            end_.append(start_end[idxs][1])
-            max_.append(start_end[idxs][0]+np.argmax(y_diff[start_end[idxs][0]:start_end[idxs][1]]))
-            node_array = np.zeros()
-            # for nd in node_list:
-            #     node_array = 
+        x_ = dict()
+        y_ = dict()
+        node_array_dict = dict()
+        for i, idxs in enumerate(start_end): #for idxs in range(len(start_end)):
+            start_idx = idxs[0]#start_end[idxs[0]
+            end_idx = idxs[1]#start_end[idxs][1]
+            start_.append(start_idx)
+            end_.append(end_idx)
+            mov_len = end_idx-start_idx
+            max_.append(start_idx+np.argmax(y_diff[start_idx:end_idx]))
+            node_array = np.zeros((mov_len, len(node_list), 2)) #2 coordinates
+            node_array_list = []
+            for ii, nd in enumerate(node_list):
+                 node_array[:, ii, 0] = df[nd+'_X'].iloc[start_idx:end_idx].to_numpy() #[start_end[idxs][0]:start_end[idxs][1]] # x-coord
+                 node_array[:, ii, 1] = df[nd+'_Y'].iloc[start_idx:end_idx].to_numpy() #[start_end[idxs][0]:start_end[idxs][1]] # y-coord
+                 node_array_list.append(nd) # append double to keep track
+            
+            node_array_dict = {
+                'node_array': node_array,
+                'node_list': node_array_list,
+                'start': idxs[0], #start_end[idxs][0],
+                'end': idxs[1], #start_end[idxs][1],
+                'movement_length': node_array.shape[1],
+                'reference_node': node,
+                'no_nodes': len(node_list),
+                'trial': trial_,
+                'date': date_,
+                'id': id_,
+                'type': type_,
+                'frame_rate': frame_rate
+            }
+            movement_list.append(node_array_dict)
         stances[node]={'start':start_,'end':end_, 'max':max_}
     stances['trial'] = trial_
     stances['date'] = date_
 
-    return pd.DataFrame.from_dict(stances)
+    return pd.DataFrame.from_dict(stances), movement_list
 
 def get_start_and_end(data: np.array, peaks, threshold: float):
     """Identifies start and stop of movements from a pose estimation time series.
