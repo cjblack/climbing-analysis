@@ -271,7 +271,7 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
         spike_sub.valid.fillna(False).astype(bool)#.isel(time_bin = slice(1, None))
     )
 
-    sy = pose_sub[pose_feature].sel(node=node).sel(coord=pose_coord).values.reshape(-1)
+    sy = pose_sub[pose_feature].sel(node=node).sel(coord=pose_coord).values.reshape(-1)#spikes.values.reshape(-1)
 
     valid_flat = valid.values.reshape(-1)
     finite = np.isfinite(X).all(axis=1) & np.isfinite(sy)
