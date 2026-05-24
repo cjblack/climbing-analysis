@@ -46,4 +46,4 @@ environment_redux.yml
 /neurokinematics/multi_modal/utils.py
 
 # local
-/templates/local_subject.yaml
+/templates/my_subjects/

@@ -15,14 +15,18 @@ MANDATORY_KEYS = ['subject_id', 'output_root', 'sessions', 'process']
 
 class ExperimentSubject:
 
-    def __init__(self, subject_specs: dict | str | Path):
+    def __init__(self, subject_specs: dict | str | Path, output_root: str | Path | None = None):
         
 
         self.subject_specs = self._load_session_specs(subject_specs)
 
         self.subject_id = self.subject_specs['subject_id']
-        self.output_root_path = self.subject_specs['output_root']
 
+        if output_root is None:
+            self.output_root_path = self.subject_specs['output_root']
+        else:
+            self.output_root_path = output_root
+        
         self.subject_path = Path(self.output_root_path) / self.subject_id
         self.subject_path.mkdir(parents=True, exist_ok=True)
 
@@ -90,11 +94,10 @@ class ExperimentSubject:
 
         for session in tqdm(self.sessions, desc="Processing individual session pose data", total=len(self.sessions), unit='sessions'):
             if pose_proc:
-                with contextlib.redirect_stdout(open(os.devnull,'w')):
-                    session.run_pose_processing()
+                self._run_pose_processing(session)
 
     def par_process_sessions(self):
-        #5s for process_sessions
+        #parallel processing of sessions - faster depending on data size
         proc_list = []
         for session in self.sessions:
             proc_list.append(delayed(self._run_pose_processing)(session))
