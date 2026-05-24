@@ -44,3 +44,6 @@ environment_redux.yml
 
 # deprecated
 /neurokinematics/multi_modal/utils.py
+
+# local
+/templates/local_subject.yaml

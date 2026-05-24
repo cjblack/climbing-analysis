@@ -7,7 +7,7 @@ name = "neurokinematics"
 version = "0.1.0"
 description = "Pipeline for analysing extracellular electrophysiology with freely-moving behaviour"
 authors = [
-    {name = "Christopher Black"}
+    {name = "Christopher Black", email = "chris.black@ucl.ac.uk"}
 ]
 
 readme = "README.md"
@@ -23,5 +23,5 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["neurokinematics"]
+where = ["."]
 include = ["neurokinematics*"]
