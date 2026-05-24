@@ -1,0 +1,6 @@
+group_id: GROUP_ID 
+output_root: "path/to/gruop"
+subjects:
+ - spec: subject_1_spec
+ - spec: subject_2_spec
+ - spec: subject_3_spec
