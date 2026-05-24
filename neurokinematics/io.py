@@ -386,7 +386,7 @@ def load_pickle(filename: str, method: str = 'default'):
     return data
 
 def load_config(filename: Path | str, config_type: str | None = None):
-    """Load yaml files as dictionaries.
+    """Load yaml config files as dictionaries - extension of load_yaml.
 
     Args:
         filename (Path | str): Config file name ending in '.yaml'
@@ -404,11 +404,27 @@ def load_config(filename: Path | str, config_type: str | None = None):
     else:
         file_path = Path(filename) # for tests
 
-    file_path = _require_file(file_path)
+    #file_path = _require_file(file_path)
 
     #if type(config_type) == str:
     #    filename = CFG_PATHS[config_type] / filename
-    with open(file_path, "r") as f:
-        config = yaml.load(f, Loader=yaml.SafeLoader)
+    #with open(file_path, "r") as f:
+    config = load_yaml(file_path)
     
     return config
+
+def load_yaml(file_path: Path | str):
+    """Load yaml file.
+
+    Args:
+        file_path (Path | str): File path for yaml file to load.
+
+    Returns:
+        data (dict): Dictionary containing data in yaml file.
+    """
+
+    file_path = _require_file(file_path)
+    with open(file_path, "r") as f:
+        data = yaml.load(f, Loader = yaml.SafeLoader)
+
+    return data
