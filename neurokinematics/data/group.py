@@ -20,6 +20,9 @@ class ExperimentGroup:
 
         self.subjects_path = self.output_root / self.group_id
 
+        self.create_subjects_from_log()
+        self.subjects_path.mkdir(parents=True, exist_ok=True)
+
 
     def _load_group_specs(self, group_specs):
         if isinstance(group_specs, (str, Path)):
@@ -42,6 +45,10 @@ class ExperimentGroup:
         for subj in self.subjects_log:
 
             self.subjects.append(ExperimentSubject(subject_specs = subj['spec'], output_root = self.subjects_path))
+
+    def process_subjects(self):
+        for subj in self.subjects:
+            subj.process_sessions()
     
     def add_subjects(self):
         pass
