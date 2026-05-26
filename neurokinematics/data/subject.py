@@ -92,7 +92,7 @@ class ExperimentSubject:
         spike_proc = self.session_processes['spike']
         lfp_proc = self.session_processes['lfp']
 
-        for session in tqdm(self.sessions, desc="Processing individual session pose data", total=len(self.sessions), unit='sessions'):
+        for session in tqdm(self.sessions, desc=f"Processing {self.subject_id} session pose data", total=len(self.sessions), unit='sessions'):
             if pose_proc:
                 self._run_pose_processing(session)
 
