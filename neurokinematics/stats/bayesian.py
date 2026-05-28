@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import arviz as az
+import pymc as pm
 
 from scipy.stats import uniform, norm
 
@@ -117,34 +118,61 @@ def update_posterior(df_bayes, df_data, ds):
     df_data = pd.concat([df_data, df_data_new], ignore_index = True)
     return df_bayes, df_data
 
-def plot_distributions(df_bayes, df_data, updates: list | None = None):
+def plot_distributions(df_bayes, df_data, updates: list | None = None, axes = None):
     
     sns.set_style('darkgrid')    
     
     posteriors = df_bayes[df_bayes['type']=='posterior']
+    likelihoods = df_bayes[df_bayes['type'] == 'likelihood']
     if isinstance(updates, list):
         if set(updates).issubset(posteriors['update'].unique()):
             posteriors = posteriors.query("update==@updates")
+            likelihoods = likelihoods.query("update==@updates")
             df_data = df_data.query("update==@updates")
         else:
             raise ValueError(f"updates must match valid update indices in df_bates, such as: {df_bayes['update'].unique()}")
-    fig, ax = plt.subplots(nrows=2)
+    
+    if axes is None:
+        fig, axes = plt.subplots(nrows=3)
 
-    sns.lineplot(data=posteriors, x='grid', y='density', hue='update', palette='crest', ax=ax[0])
-    sns.kdeplot(data=df_data, x='velocity', hue='update', palette='crest', ax=ax[1], fill=True)
-    ax[0].set_title('Posterior Distributions')
-    ax[1].set_title('Data distributions')
-    xlims = ax[0].get_xlim()
-    ax[1].set_xlim(xlims)
+    sns.lineplot(data=posteriors, x='grid', y='density', hue='update', palette='crest', ax=axes[0])
+    sns.lineplot(data=likelihoods,x='grid', y='density', hue='update', palette='crest', ax=axes[1])
+    sns.kdeplot(data=df_data, x='velocity', hue='update', palette='crest', ax=axes[2], fill=True)
+    axes[0].set_title('Posterior',fontsize=14)
+    axes[1].set_title('Likelihood',fontsize=14)
+    axes[2].set_title('Data', fontsize=14)
+    xlims = axes[0].get_xlim()
+    axes[1].set_xlim(xlims)
+    axes[2].set_xlim(xlims)
 
+    #plt.tight_layout()
+    #plt.show()
+
+def plot_credible_intervals(samples: dict, hdi_prob=0.95, axes = None):
+    if axes is None:
+        fig, axes = plt.subplots()
+    az.plot_forest(samples, hdi_prob=hdi_prob, figsize=(6,8), textsize=12, ax=axes)
+    plt.title('Credible intervals', fontsize=14)
+    plt.xlabel('velocity (cm/s)', fontsize=12)
     plt.tight_layout()
     plt.show()
+
+def create_uneven_axes(rows=3, cols=2):
+    fig = plt.figure(figsize=(10,8))
+    gs = fig.add_gridspec(rows,cols)
+    ax_left = []
+    ax_right = []
+    for i in range(rows):
+        ax_left.append(fig.add_subplot(gs[i,0]))
+    ax_right.append(fig.add_subplot(gs[:,1]))
+
+    return ax_right, ax_left
     
 def compute_hdi(df_bayes, distribution: str, updates: list, size=10000, hdi_prob: float = 0.95):
     
     grid = df_bayes['grid'].unique()
     rows = []
-
+    samples_dict = {}
     if distribution == 'diff_posterior':
         if len(updates) != 2:
             raise ValueError(f'updates list must comtain 2 values, it currently contains {len(updates)} values.')
@@ -154,6 +182,7 @@ def compute_hdi(df_bayes, distribution: str, updates: list, size=10000, hdi_prob
         dist_b = df_bayes.query("type=='posterior' & update==@update_b")['density'].values
         dist = dist_b - dist_a
         samples = np.random.choice(grid, size=size, p = dist)
+        samples_dict['update'] = samples
         hdi = az.hdi(samples, hdi_prob = hdi_prob)
         rows.append({
             'update': 'diff',
@@ -162,12 +191,12 @@ def compute_hdi(df_bayes, distribution: str, updates: list, size=10000, hdi_prob
             'upper': hdi[1],
             'comparison': f"update {update_b} - update {update_a}"
         })
-        cis['type'] = distribution
-        cis['updates'] = updates
+        df_hdi = pd.DataFrame(rows)
     else:
         for update in updates:
             dist = df_bayes.query("type==@distribution & update==@update")['density'].values
             samples = np.random.choice(grid, size=size, p = dist)
+            samples_dict[f'update_{update}'] = samples
             hdi = az.hdi(samples, hdi_prob = hdi_prob)
             rows.append(
                 {
@@ -177,5 +206,6 @@ def compute_hdi(df_bayes, distribution: str, updates: list, size=10000, hdi_prob
                     'upper': hdi[1]
                 }
             )
+        df_hdi = pd.DataFrame(rows)
     
-    return cis
+    return df_hdi, samples_dict
