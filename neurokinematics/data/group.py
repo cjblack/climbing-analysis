@@ -24,6 +24,14 @@ class ExperimentGroup:
         self.subjects_path.mkdir(parents=True, exist_ok=True)
 
 
+    @classmethod
+    def from_existing(cls, group_path: Path | str):
+        group_path = Path(group_path)
+        group_spec_path = group_path / "group_spec.yaml"
+
+        spec = load_yaml(group_spec_path)
+        
+
     def _load_group_specs(self, group_specs):
         if isinstance(group_specs, (str, Path)):
             group_specs = Path(group_specs)

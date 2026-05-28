@@ -9,6 +9,7 @@ from tqdm import tqdm
 from tqdm.dask import TqdmCallback
 from tqdm.auto import tqdm as atqdm
 
+from neurokinematics.io import load_yaml
 from neurokinematics.data.session import ExperimentSession
 
 MANDATORY_KEYS = ['subject_id', 'output_root', 'sessions', 'process']
@@ -36,6 +37,21 @@ class ExperimentSubject:
         if self.session_log:
             self.create_sessions_from_log()
 
+    @classmethod
+    def from_existing(cls, subject_path: Path):
+        subject_path = Path(subject_path)
+        state = load_yaml(subject_path / 'subject_state.yaml')
+
+        subject = cls.__new__(cls)
+        subject.subject_id = state['subject_id']
+        subject.subject_path = subject_path
+        subject.output_root_path = state['output_root']
+        subject.session_processes = state['process']
+        subject.sessions = [
+            ExperimentSession.from_existing(subject_path / s['session_path'] for s in state['sessions'])
+        ]
+
+        return subject
 
     def _load_session_specs(self, session_specs):
 
