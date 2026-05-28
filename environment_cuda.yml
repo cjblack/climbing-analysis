@@ -23,6 +23,7 @@ dependencies:
   - xmltodict
   - xarray
   - zarr
+  - pymc
   - pyyaml
   - pytest
   - pip
