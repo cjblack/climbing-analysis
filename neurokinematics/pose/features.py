@@ -6,6 +6,8 @@ from pathlib import Path
 
 #from neurokinematics.pose.io import save_movement_dataset
 from neurokinematics.io import save_dataset
+from neurokinematics.pose.utils import pixels_to_cm
+
 
 def pad_movements(movement_list: list, pad_value = np.nan):
     """Pad movement arrays to be the same size.
@@ -246,3 +248,15 @@ def compute_speed(velocity, dim: str = "coord"):
 def compute_acceleration(velocity, dim: str = "time"):
     acceleration = velocity.differentiate(dim)
     return acceleration
+
+def extract_max_velocity_from_trajectories(ds: xr.Dataset, node: str):
+    date = ds.date.values[0]
+    id = ds.id.values[0]
+    mask = (ds.reference_node == node).compute()
+    ds_sub = ds.where(mask, drop=True)
+    vy = ds_sub.velocity.sel(coord='y', node = node)
+    vx = ds_sub.velocity.sel(coord='x' node = node)
+    vy = np.nanmax(vy, axis=1) * pixels_to_cm()
+    vx = np.nanmax(vx, axis=1) * pixels_to_cm()
+
+    return vx, vy, id, date
