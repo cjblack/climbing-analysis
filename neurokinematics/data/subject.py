@@ -9,62 +9,70 @@ from tqdm import tqdm
 from tqdm.dask import TqdmCallback
 from tqdm.auto import tqdm as atqdm
 
-from neurokinematics.io import load_yaml
+from neurokinematics.io import load_yaml, save_yaml
 from neurokinematics.data.session import ExperimentSession
 
 MANDATORY_KEYS = ['subject_id', 'output_root', 'sessions', 'process']
 
 class ExperimentSubject:
 
-    def __init__(self, subject_specs: dict | str | Path, output_root: str | Path | None = None):
+    def __init__(self, subject_specs: dict | str | Path | None, output_root: str | Path | None = None):
         
 
-        self.subject_specs = self._load_session_specs(subject_specs)
-
-        self.subject_id = self.subject_specs['subject_id']
-
-        if output_root is None:
-            self.output_root_path = self.subject_specs['output_root']
-        else:
-            self.output_root_path = output_root
+        if subject_specs is not None:
+            self.subject_specs = self._load_subject_specs(subject_specs)
         
-        self.subject_path = Path(self.output_root_path) / self.subject_id
-        self.subject_path.mkdir(parents=True, exist_ok=True)
 
-        self.session_processes = self.subject_specs['process']
-        self.session_log = self.subject_specs['sessions']
+            self.subject_id = self.subject_specs['subject_id']
 
-        if self.session_log:
-            self.create_sessions_from_log()
+            if output_root is None:
+                self.output_root_path = self.subject_specs['output_root']
+            else:
+                self.output_root_path = output_root
+            
+            self.subject_path = Path(self.output_root_path) / self.subject_id
+            self.subject_path.mkdir(parents=True, exist_ok=True)
+            
 
+            self.session_processes = self.subject_specs['process']
+            self.session_log = self.subject_specs['sessions']
+
+            if self.session_log:
+                self.create_sessions_from_log()
+            self._save_subject_specs()
     @classmethod
     def from_existing(cls, subject_path: Path):
         subject_path = Path(subject_path)
-        state = load_yaml(subject_path / 'subject_state.yaml')
+        #state = load_yaml(subject_path / 'subject_spec.yaml')
 
-        subject = cls.__new__(cls)
-        subject.subject_id = state['subject_id']
+        subject = cls(subject_specs = None)
+        subject.subject_specs = load_yaml(subject_path / 'subject_spec.yaml')
+        subject.subject_id = subject.subject_specs['subject_id']
         subject.subject_path = subject_path
-        subject.output_root_path = state['output_root']
-        subject.session_processes = state['process']
+        subject.output_root_path = subject.subject_specs['output_root']
+        subject.session_processes = subject.subject_specs['process']
+        subject.session_log = subject.subject_specs['runtime']['sessions']
+        subject.session_processes = subject.subject_specs['process']
+        
+        
         subject.sessions = [
-            ExperimentSession.from_existing(subject_path / s['session_path'] for s in state['sessions'])
+            ExperimentSession.from_existing(subject_path / s['path']) for s in subject.session_log
         ]
 
         return subject
 
-    def _load_session_specs(self, session_specs):
+    def _load_subject_specs(self, subject_specs):
 
-        if isinstance(session_specs, (str, Path)):
-            session_specs = Path(session_specs)
-            if session_specs.suffix in ['.yaml', '.yml']:
-                with open(session_specs, "r") as f:
-                    session_specs = yaml.safe_load(f)
+        if isinstance(subject_specs, (str, Path)):
+            subject_specs = Path(subject_specs)
+            if subject_specs.suffix in ['.yaml', '.yml']:
+                with open(subject_specs, "r") as f:
+                    subject_specs = yaml.safe_load(f)
                     #return yaml.safe_load(f)
             else:
-                raise ValueError("session_specs must be .yaml or .yml")
+                raise ValueError("subject_specs must be .yaml or .yml")
             
-        elif isinstance(session_specs, dict):
+        elif isinstance(subject_specs, dict):
             pass
 
         
@@ -72,16 +80,21 @@ class ExperimentSubject:
             raise ValueError("subject_specs must either be a str, Path, or dict.")
         
         for key in MANDATORY_KEYS:
-            if key not in session_specs.keys():
-                raise ValueError(f"Missing {key} in session_specs file.")
+            if key not in subject_specs.keys():
+                raise ValueError(f"Missing {key} in subject_specs file.")
 
-        return session_specs
+        return subject_specs
+    
+    def _save_subject_specs(self):
+        
+        self.subject_spec_path = self.subject_path / 'subject_spec.yaml'
+        save_yaml(self.subject_specs, self.subject_spec_path)
 
 
     def create_sessions_from_log(self):
 
         self.sessions = []
-
+        self.subject_specs['runtime'] = {'sessions': []}
         for sesh in self.session_log:
             sesh_id = sesh['session_id']
             ephys_dp = sesh['ephys_data_path']
@@ -96,8 +109,16 @@ class ExperimentSubject:
                 pose_dp = Path(pose_dp)
                 if not pose_dp.exists():
                     raise ValueError("Pose data path does not exist. Please enter valid path.")
-                
-            self.sessions.append(ExperimentSession(session_id = sesh_id, ephys_data_path = ephys_dp, pose_data_path = pose_dp, output_root_path = self.subject_path ))    
+            session = ExperimentSession(session_id = sesh_id, ephys_data_path = ephys_dp, pose_data_path = pose_dp, output_root_path = self.subject_path )
+            self.sessions.append(session)
+            self.subject_specs['runtime']['sessions'].append(
+                {
+                    'path': str(session.session_path.relative_to(self.subject_path)), 
+                    'session_id':session.session_id, 
+                    'ephys_data_path': str(session.ephys_data_path) if isinstance(session.ephys_data_path, (str, Path)) else None,
+                    'pose_data_path': str(session.pose_data_path) if isinstance(session.pose_data_path, (str, Path)) else None
+                    }
+                )    
 
     def add_sessions(self):
         # this will be used to add either a single, or multiple sessions to the experiment subject...
