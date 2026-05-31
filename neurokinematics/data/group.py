@@ -3,6 +3,10 @@ import yaml
 
 import pandas as pd
 
+from tqdm import tqdm
+from tqdm.dask import TqdmCallback
+from tqdm.auto import tqdm as atqdm
+
 # data
 from neurokinematics.data.subject import ExperimentSubject
 from neurokinematics.data.project import NKProject
@@ -12,7 +16,7 @@ from neurokinematics.io import load_yaml, save_yaml, load_zarr
 
 # pose
 from neurokinematics.pose.utils import pixels_to_cm
-from neurokinematics.pose.features import extract_max_velocity, extract_metadata
+from neurokinematics.pose.features import extract_max_velocity, extract_metadata, extract_max_acceleration
 
 MANDATORY_GROUP_SPEC_KEYS = ['group_id', 'output_root', 'subjects']
 
@@ -106,38 +110,45 @@ class ExperimentGroup:
     def par_process_subjects(self):
         for subject in self.subjects:
             subject.par_process_sessions()
+
     def add_subjects(self):
         pass
 
-    def pose_summary(self, feature: str = 'velocity'):
+    def pose_summary(self):
         # start by just collecting velocity data...
-        ds_list = []
         rows = []
-        for subject in self.subjects:
+        for subject in tqdm(self.subjects, desc=f"Extracting pose features from subject sessions", total = len(self.subjects), unit='subjects'):
             subj_path = Path(subject.subject_path)
             for session in subject.sessions:
                 sesh_path = session.session_id
                 data_path = session.session_outputs.get('movement_features', {}).get('path', None)
-                if data_path == None:
-                    print(f"Data for {subj.subject_id} on session {session.session_id} is None.")
+                if data_path is None:
+                    print(f"Data for {subject.subject_id} on session {session.session_id} is None.")
                 else:
-                    data_path = subj_path / Path(sesh_path) / Path(data_path)
+                    data_path = subj_path / sesh_path / data_path
                     if data_path.exists():
                         ds = load_zarr(data_path, method='xarray')
-                        nodes = ds[0].node.values
+                        nodes = ds.node.values
                         for node in nodes:
-                            date, subject_id = extract_metadata(ds)
-                            vx, vy = extract_max_velocity(ds)
-
-                        ds_list.append(ds)
-        nodes = ds_list[0].node.values
-        for node in nodes:
-            for ds in ds_list:
-                date, id = extract_metadata(ds)
-                vx, vy = extract_max_velocity(ds, node=node)
-                df_data = pd.DataFrame({
-                    'vx': vx.values,
-                    'vy': vy.values,
-                    'id': subject_id,
-                    'date': date
-                })
+                            date, subject_id, trials, experiment_type = extract_metadata(ds, mask=node)
+                            vx, vy, v_mag = extract_max_velocity(ds, node)
+                            ax, ay = extract_max_acceleration(ds, node)
+                            n_trials = len(vx.values)
+                            rows.append(pd.DataFrame({
+                                'vx': vx.values,
+                                'vy': vy.values,
+                                'v_magnitude': v_mag.values,
+                                'ax': ax.values,
+                                'ay': ay.values,
+                                'date': [date]*n_trials,
+                                'id': [subject_id]*n_trials,
+                                'node': [node]*n_trials,
+                                'trial': trials.values,
+                                'experiment_type': experiment_type.values
+                            }))
+        if not rows:
+            return pd.DataFrame()
+        df = pd.concat(rows, ignore_index = True)
+        df['session_number'] = df.groupby('id')['date'].transform(lambda x: pd.Categorical(x).codes)
+        df.to_parquet(self.group_path/'pose_metrics.parquet')
+        return df
