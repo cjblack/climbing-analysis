@@ -183,8 +183,12 @@ class ExperimentSubject:
         lfp_proc = self.session_processes['lfp']
 
         for session in tqdm(self.sessions, desc=f"Processing {self.subject_id} session pose data", total=len(self.sessions), unit='sessions'):
-            if pose_proc:
+            if pose_proc and session.pose_data_path:
                 self._run_pose_processing(session)
+            else:
+                raise FileExistsError('No pose data available.')
+        
+
 
     def par_process_sessions(self):
         #parallel processing of sessions - faster depending on data size

@@ -12,7 +12,7 @@ from neurokinematics.io import load_yaml, save_yaml, load_zarr
 
 # pose
 from neurokinematics.pose.utils import pixels_to_cm
-from neurokinematics.pose.features import extract_max_velocity_from_trajectories, extract_metadata_from_trajectories
+from neurokinematics.pose.features import extract_max_velocity, extract_metadata
 
 MANDATORY_GROUP_SPEC_KEYS = ['group_id', 'output_root', 'subjects']
 
@@ -103,15 +103,19 @@ class ExperimentGroup:
         for subj in self.subjects:
             subj.process_sessions()
     
+    def par_process_subjects(self):
+        for subject in self.subjects:
+            subject.par_process_sessions()
     def add_subjects(self):
         pass
 
     def pose_summary(self, feature: str = 'velocity'):
         # start by just collecting velocity data...
         ds_list = []
-        for subj in self.subjects:
-            subj_path = Path(subj.subject_path)
-            for session in subj.sessions:
+        rows = []
+        for subject in self.subjects:
+            subj_path = Path(subject.subject_path)
+            for session in subject.sessions:
                 sesh_path = session.session_id
                 data_path = session.session_outputs.get('movement_features', {}).get('path', None)
                 if data_path == None:
@@ -120,15 +124,20 @@ class ExperimentGroup:
                     data_path = subj_path / Path(sesh_path) / Path(data_path)
                     if data_path.exists():
                         ds = load_zarr(data_path, method='xarray')
+                        nodes = ds[0].node.values
+                        for node in nodes:
+                            date, subject_id = extract_metadata(ds)
+                            vx, vy = extract_max_velocity(ds)
+
                         ds_list.append(ds)
         nodes = ds_list[0].node.values
         for node in nodes:
             for ds in ds_list:
-                date, id = extract_metadata_from_trajectories(ds)
-                vx, vy = extract_max_velocity_from_trajectories(ds, node=node)
+                date, id = extract_metadata(ds)
+                vx, vy = extract_max_velocity(ds, node=node)
                 df_data = pd.DataFrame({
-                    'vx': vx,
-                    'vy': vy,
-                    'id': id,
+                    'vx': vx.values,
+                    'vy': vy.values,
+                    'id': subject_id,
                     'date': date
                 })
