@@ -342,6 +342,23 @@ def load_zarr(file_path: str, dataset: str | None = None, mode: str ="r", method
         data = xr.open_zarr(file_path)
         return data
 
+def load_parquet(file_path: str, method: str = "pandas"):
+    """Open parquet files.
+
+    Args:
+        file_path (str): Path including file name ending in '.parquet'
+        method (str, optional): Method for loading data. Options are "pandas" or "dask".  Use "dask" for lazy loading. Defaults to "pandas".
+
+    Returns:
+        _type_: _description_
+    """
+    file_path = _require_file(file_path)
+    if method == "pandas":
+        df = pd.read_parquet(file_path)
+        return df
+    elif method == "dask":
+        df = dd.read_parquet(file_path)
+        return df
 
 def load_memmap(file_path: str, shape: tuple, dtype: str ="float32", mode: str = "r"):
     """Load a numpy memmap file
