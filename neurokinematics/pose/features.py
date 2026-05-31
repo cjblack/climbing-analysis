@@ -249,18 +249,45 @@ def compute_acceleration(velocity, dim: str = "time"):
     acceleration = velocity.differentiate(dim)
     return acceleration
 
-def extract_metadata_from_trajectories(ds: xr.Dataset):
-    id = ds.id.values[0]
-    date = ds.date.values[0]
-    date = str(np.datetime_as_string(date, unit='D'))
-    return date, id
 
-def extract_max_velocity_from_trajectories(ds: xr.Dataset, node: str):
+### * xarray dataset handling * ###
+
+def mask_node(ds: xr.Dataset, node: str):
     mask = (ds.reference_node == node).compute()
     ds_sub = ds.where(mask, drop=True)
-    vy = ds_sub.velocity.sel(coord='y', node = node)
-    vx = ds_sub.velocity.sel(coord='x', node = node)
-    vy = np.nanmax(vy, axis=1) * pixels_to_cm()
-    vx = np.nanmax(vx, axis=1) * pixels_to_cm()
+    return ds_sub
 
-    return vx, vy
+def extract_metadata(ds: xr.Dataset, mask: str | None = None):
+    if mask:
+        ds = mask_node(ds, mask)
+    subject_id = ds.id.values[0]
+    date = ds.date.values[0]
+    date = str(np.datetime_as_string(date, unit='D'))
+    trials = ds.trial
+    experiment_type = ds.type
+    return date, subject_id, trials, experiment_type
+
+def extract_max_velocity(ds: xr.Dataset, node: str):
+    #mask = (ds.reference_node == node).compute()
+    ds_sub = mask_node(ds, node) #ds.where(mask, drop=True)
+    scale = pixels_to_cm()
+    vy = ds_sub.velocity.sel(coord='y', node = node) * scale
+    vx = ds_sub.velocity.sel(coord='x', node = node) * scale
+    v_mag = np.sqrt(vy**2 + vx**2)
+    vy = vy.max(dim='time', skipna=True) #np.nanmax(vy, axis=1) * scale
+    vx = vx.max(dim='time', skipna=True) #np.nanmax(vx, axis=1) * scale
+    v_mag = v_mag.max(dim='time', skipna=True)
+
+    return vx, vy, v_mag
+
+def extract_max_acceleration(ds: xr.Dataset, node: str):
+    #mask = (ds.reference_node == node).compute()
+    ds_sub = mask_node(ds, node) #ds.where(mask, drop=True)
+    scale = pixels_to_cm()
+    ay = ds_sub.acceleration.sel(coord='y', node=node)
+    ax = ds_sub.acceleration.sel(coord='x', node=node)
+
+    ay = ay.max(dim='time', skipna=True)
+    ax = ax.max(dim='time', skipna=True)
+
+    return ay, ax
