@@ -10,6 +10,7 @@ dependencies:
   - scipy
   - pandas=2.3.3
   - matplotlib
+  - gxx
   - h5py
   - pytables
   - psutil
