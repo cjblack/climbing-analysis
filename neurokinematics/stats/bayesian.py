@@ -1,3 +1,5 @@
+""" DEPRECATED """
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -209,3 +211,4 @@ def compute_hdi(df_bayes, distribution: str, updates: list, size=10000, hdi_prob
         df_hdi = pd.DataFrame(rows)
     
     return df_hdi, samples_dict
+
