@@ -1,3 +1,15 @@
+"""Subject management for neurokinematics.
+
+This module provides a hierarchical class that serves to maintain and execute session workflows for an individual subject.
+
+The subject object encapsulates:
+    - Subject configuration and metadata
+    - Creation and loading of reproducible subject level workflows
+
+
+"""
+
+
 from pathlib import Path
 import contextlib
 import os
@@ -11,26 +23,39 @@ from tqdm.auto import tqdm as atqdm
 
 from neurokinematics.io import load_yaml, save_yaml
 from neurokinematics.data.session import ExperimentSession
+from neurokinematics.data.project import NKProject
 
 MANDATORY_KEYS = ['subject_id', 'output_root', 'sessions', 'process']
 
 class ExperimentSubject:
+    """Class for orchestrating multiple session workflows for one subject
 
-    def __init__(self, subject_specs: dict | str | Path | None, output_root: str | Path | None = None):
+    Example:
+        >>> subject = ExperimentSubject(
+        ...     subject_specs = "path/to/subject/spec.yaml", # see templates/ for example subject_spec files
+        ...     project_path = "path/to/project/root", # location for where you want your project to be stored
+        ...     name = "project_name" # desired name for project -> defaults to "NK"
+        ... )
+        >>> subject.process_sessions()
+    """
+
+    def __init__(self, subject_specs: dict | str | Path | None, project_path: str | Path | None = None, name: str = 'NK'):
         
-
+        project = NKProject(root = project_path, name = name)
         if subject_specs is not None:
             self.subject_specs = self._load_subject_specs(subject_specs)
-        
 
             self.subject_id = self.subject_specs['subject_id']
+            self.project_name = project.name
+            self.subject_specs['project_name'] = self.project_name
 
-            if output_root is None:
-                self.output_root_path = self.subject_specs['output_root']
-            else:
-                self.output_root_path = output_root
+            # if output_root is None:
+            #     self.output_root_path = self.subject_specs['output_root']
+            # else:
+            #     self.output_root_path = output_root
             
-            self.subject_path = Path(self.output_root_path) / self.subject_id
+            self.subject_root = Path(project.subject_root)
+            self.subject_path = self.subject_root / self.subject_id #Path(self.output_root_path) / self.subject_id
             self.subject_path.mkdir(parents=True, exist_ok=True)
             
 
@@ -40,29 +65,55 @@ class ExperimentSubject:
             if self.session_log:
                 self.create_sessions_from_log()
             self._save_subject_specs()
+    
     @classmethod
-    def from_existing(cls, subject_path: Path):
-        subject_path = Path(subject_path)
-        #state = load_yaml(subject_path / 'subject_spec.yaml')
+    def from_existing(cls, subject_path: str | Path):
+        """Reload previous ExperimentSubject from locally stored spec file.
 
-        subject = cls(subject_specs = None)
+        Args:
+            subject_path (str | Path): Path of initial ExperimentSubject.
+
+        Returns:
+            subject (ExperimentSubject): Pre-loaded experiment subject class built from previously saved subject_spec.yaml file.
+
+        Example:
+            >>> subject = ExperimentSession.from_existing(subject_path = 'path/to/existing/subject')
+        """
+
+        subject_path = Path(subject_path)
+
+        subject = cls(subject_specs = None) # avoid running main calls in __init__
         subject.subject_specs = load_yaml(subject_path / 'subject_spec.yaml')
         subject.subject_id = subject.subject_specs['subject_id']
         subject.subject_path = subject_path
-        subject.output_root_path = subject.subject_specs['output_root']
+        subject.project_name = subject.subject_specs['project_name']
+        subject.subject_root = subject.subject_path.parent
+        #subject.output_root_path = subject.subject_specs['output_root']
         subject.session_processes = subject.subject_specs['process']
         subject.session_log = subject.subject_specs['runtime']['sessions']
         subject.session_processes = subject.subject_specs['process']
         
-        
+        # reload prior sessions using the ExperimentSession from_existing class method
         subject.sessions = [
             ExperimentSession.from_existing(subject_path / s['path']) for s in subject.session_log
         ]
 
         return subject
 
-    def _load_subject_specs(self, subject_specs):
+    def _load_subject_specs(self, subject_specs: str | Path | dict):
+        """Load subject information from spec file
 
+        Args:
+            subject_specs (str | Path | dict): Location of .yaml file or corresponding dictionary containing subject spec information. See templates/ for more information
+
+        Raises:
+            ValueError: Check that the file type is correct if using a string or Path variable.
+            ValueError: Checks that the right input type is used.
+            ValueError: Checks that the right keys are available.
+
+        Returns:
+            subject_specs (dict): Dictionary of subject information to build sessions.
+        """
         if isinstance(subject_specs, (str, Path)):
             subject_specs = Path(subject_specs)
             if subject_specs.suffix in ['.yaml', '.yml']:
@@ -86,6 +137,8 @@ class ExperimentSubject:
         return subject_specs
     
     def _save_subject_specs(self):
+        """Simple helper function to save the subject spec file for persistence.
+        """
         
         self.subject_spec_path = self.subject_path / 'subject_spec.yaml'
         save_yaml(self.subject_specs, self.subject_spec_path)
@@ -143,5 +196,10 @@ class ExperimentSubject:
 
 
     def _run_pose_processing(self, session):
+        """Helper function to run session pose processing
+
+        Args:
+            session (ExperimentSession): Instantiated ExperimentSession class
+        """
         with contextlib.redirect_stdout(open(os.devnull,'w')):
             session.run_pose_processing()
