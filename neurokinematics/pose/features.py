@@ -249,7 +249,7 @@ def compute_acceleration(velocity, dim: str = "time"):
     acceleration = velocity.differentiate(dim)
     return acceleration
 
-def extract_metadata_from_trajectories(ds: xr.Dataset)
+def extract_metadata_from_trajectories(ds: xr.Dataset):
     id = ds.id.values[0]
     date = ds.date.values[0]
     date = str(np.datetime_as_string(date, unit='D'))
@@ -259,7 +259,7 @@ def extract_max_velocity_from_trajectories(ds: xr.Dataset, node: str):
     mask = (ds.reference_node == node).compute()
     ds_sub = ds.where(mask, drop=True)
     vy = ds_sub.velocity.sel(coord='y', node = node)
-    vx = ds_sub.velocity.sel(coord='x' node = node)
+    vx = ds_sub.velocity.sel(coord='x', node = node)
     vy = np.nanmax(vy, axis=1) * pixels_to_cm()
     vx = np.nanmax(vx, axis=1) * pixels_to_cm()
 
