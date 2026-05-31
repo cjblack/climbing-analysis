@@ -136,7 +136,7 @@ class ExperimentSession:
             self.output_root = Path(output_root)
 
         # create session directory
-        self.session_path = self.output_root / f"{self.session_id}_nk"
+        self.session_path = self.output_root / f"{self.session_id}"
         self.dirs = create_session_dirs(self.session_path)
 
         # create outputs monitor
