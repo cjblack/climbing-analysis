@@ -11,6 +11,8 @@ dependencies:
   - pandas=2.3.3
   - matplotlib
   - gxx
+  - graphviz
+  - python-graphviz
   - h5py
   - pytables
   - psutil
