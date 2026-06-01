@@ -12,11 +12,11 @@ from neurokinematics.data.subject import ExperimentSubject
 from neurokinematics.data.project import NKProject
 
 # io
-from neurokinematics.io import load_yaml, save_yaml, load_zarr
+from neurokinematics.io import load_yaml, save_yaml, load_zarr, load_parquet
 
 # pose
 from neurokinematics.pose.utils import pixels_to_cm
-from neurokinematics.pose.features import extract_max_velocity, extract_metadata, extract_max_acceleration
+from neurokinematics.pose.features import velocity_summary, acceleration_summary, extract_metadata
 
 MANDATORY_GROUP_SPEC_KEYS = ['group_id', 'output_root', 'subjects']
 
@@ -50,6 +50,7 @@ class ExperimentGroup:
             self.group_path.mkdir(parents=True, exist_ok=True)
             
             self.create_subjects_from_log()
+            self._init_directory_structure()
             self._save_group_specs()
 
 
@@ -62,7 +63,7 @@ class ExperimentGroup:
         group.group_path = group_path
         group.group_specs = load_yaml(group_spec_path)
         group.group_id = group.group_specs['group_id']
-        #group.output_root = Path(group.group_specs['output_root'])
+        group.dirs = group.group_specs['folders']
         group.project_path = group.group_path.parent.parent
         group.subject_root = group.project_path / "Subjects" 
         group.subjects_log = group.group_specs['runtime']['subjects']
@@ -74,6 +75,21 @@ class ExperimentGroup:
         ]
 
         return group
+    
+    def _init_directory_structure(self):
+        
+        self.group_specs['folders'] = dict()
+
+        dirs = {
+            'summaries': self.group_path / 'summaries',
+            'stats': self.group_path / 'stats',
+            'results': self.group_path / 'results'
+        }
+
+        for name, folder in dirs.items():
+            folder.mkdir(parents=True, exist_ok=True)
+            self.group_specs['folders'][name] = str(folder.relative_to(self.group_path))
+        self.dirs = dirs
 
     def _load_group_specs(self, group_specs):
         if isinstance(group_specs, (str, Path)):
@@ -114,41 +130,89 @@ class ExperimentGroup:
     def add_subjects(self):
         pass
 
-    def pose_summary(self):
+    def create_summary(self, type: str):
+        """High-level function to make creating summaries easier.
+
+        Args:
+            type (str): Name of the summary to create
+        """
+        if type == 'pose':
+            self.summarize_pose()
+
+        if type == 'spikes':
+            pass
+        
+        if type == 'lfp':
+            pass
+
+
+    def load_summary(self, type: str):
+        """Lazy load summary data to group.
+
+        Args:
+            type (str): Name of the summary to load as a dask dataframe
+        """
+        if type == 'pose':
+            self.pose_summary = load_parquet(self.dirs['summaries'] / 'pose_metrics.parquet', method='dask')
+        if type == 'spikes':
+            pass
+        if type == 'lfp':
+            pass
+
+
+    def summarize_pose(self):
         # start by just collecting velocity data...
+
         rows = []
         for subject in tqdm(self.subjects, desc=f"Extracting pose features from subject sessions", total = len(self.subjects), unit='subjects'):
             subj_path = Path(subject.subject_path)
+            
             for session in subject.sessions:
                 sesh_path = session.session_id
                 data_path = session.session_outputs.get('movement_features', {}).get('path', None)
+                
                 if data_path is None:
                     print(f"Data for {subject.subject_id} on session {session.session_id} is None.")
                 else:
                     data_path = subj_path / sesh_path / data_path
+                    
                     if data_path.exists():
                         ds = load_zarr(data_path, method='xarray')
                         nodes = ds.node.values
+                        
                         for node in nodes:
+                            
                             date, subject_id, trials, experiment_type = extract_metadata(ds, mask=node)
-                            vx, vy, v_mag = extract_max_velocity(ds, node)
-                            ax, ay = extract_max_acceleration(ds, node)
-                            n_trials = len(vx.values)
-                            rows.append(pd.DataFrame({
-                                'vx': vx.values,
-                                'vy': vy.values,
-                                'v_magnitude': v_mag.values,
-                                'ax': ax.values,
-                                'ay': ay.values,
+                            vel_summary = velocity_summary(ds, node)
+                            acc_summary = acceleration_summary(ds, node)
+                            n_trials = len(next(iter(vel_summary.values())))
+                            
+                            meta_summary = {
                                 'date': [date]*n_trials,
                                 'id': [subject_id]*n_trials,
                                 'node': [node]*n_trials,
                                 'trial': trials.values,
                                 'experiment_type': experiment_type.values
-                            }))
+                            }
+
+                            summary = meta_summary | vel_summary | acc_summary
+                            
+                            rows.append(pd.DataFrame(summary))
+
         if not rows:
             return pd.DataFrame()
+        
         df = pd.concat(rows, ignore_index = True)
         df['session_number'] = df.groupby('id')['date'].transform(lambda x: pd.Categorical(x).codes)
-        df.to_parquet(self.group_path/'pose_metrics.parquet')
-        return df
+
+        # drop rows where values are NaN
+
+        nan_rows = df.isnull().any(axis=1).sum()
+        if nan_rows > 0:
+            print(f"Dropping {nan_rows} rows with NaN values "
+                  f"({nan_rows/len(df)*100:.1f}% of data)"
+                  )
+            df = df.dropna()
+
+        df.to_parquet(self.dirs['summaries']/'pose_metrics.parquet')
+        self.pose_summary = df
