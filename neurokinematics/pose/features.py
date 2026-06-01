@@ -2,6 +2,7 @@ import warnings
 
 import numpy as np
 import xarray as xr
+import dask
 from pathlib import Path
 
 #from neurokinematics.pose.io import save_movement_dataset
@@ -267,27 +268,101 @@ def extract_metadata(ds: xr.Dataset, mask: str | None = None):
     experiment_type = ds.type
     return date, subject_id, trials, experiment_type
 
-def extract_max_velocity(ds: xr.Dataset, node: str):
-    #mask = (ds.reference_node == node).compute()
+def velocity_summary(ds: xr.Dataset, node: str):
+    
     ds_sub = mask_node(ds, node) #ds.where(mask, drop=True)
     scale = pixels_to_cm()
     vy = ds_sub.velocity.sel(coord='y', node = node) * scale
     vx = ds_sub.velocity.sel(coord='x', node = node) * scale
     v_mag = np.sqrt(vy**2 + vx**2)
-    vy = vy.max(dim='time', skipna=True) #np.nanmax(vy, axis=1) * scale
-    vx = vx.max(dim='time', skipna=True) #np.nanmax(vx, axis=1) * scale
-    v_mag = v_mag.max(dim='time', skipna=True)
 
-    return vx, vy, v_mag
+    # the following calculations are being performed on dask, so even though NaN padding is removed it will throw warning, therefore catch warnings and run compute()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning, message='invalid value encountered in divide')
+        warnings.filterwarnings('ignore', category=RuntimeWarning, message='All-NaN slice encountered')
+        # summaries
+        vy_max = vy.max(dim='time', skipna=True) #np.nanmax(vy, axis=1) * scale
+        vx_max = vx.max(dim='time', skipna=True) #np.nanmax(vx, axis=1) * scale
+        v_mag_max = v_mag.max(dim='time', skipna=True)
 
-def extract_max_acceleration(ds: xr.Dataset, node: str):
+        vy_mean = vy.mean(dim='time', skipna=True)
+        vx_mean = vx.mean(dim='time', skipna=True)
+        v_mag_mean = v_mag.mean(dim='time', skipna=True)
+
+        vy_std = vy.std(dim='time', skipna=True)
+        vx_std = vx.std(dim='time', skipna=True)
+        v_mag_std = v_mag.std(dim='time', skipna=True)
+
+        (vy_max, vx_max, v_mag_max, vy_mean, vx_mean, v_mag_mean, vy_std, vx_std, v_mag_std) = dask.compute(
+            vy_max,
+            vx_max,
+            v_mag_max,
+            vy_mean,
+            vx_mean,
+            v_mag_mean,
+            vy_std,
+            vx_std,
+            v_mag_std
+        )
+
+    return {
+        'vx_max': vx_max.values,
+        'vy_max': vy_max.values,
+        'v_mag_max': v_mag_max.values,
+        'vy_mean': vy_mean.values,
+        'vx_mean': vx_mean.values,
+        'v_mag_mean': v_mag_mean.values,
+        'vy_std': vy_std.values,
+        'vx_std': vx_std.values,
+        'v_mag_std': v_mag_std.values
+    }
+
+def acceleration_summary(ds: xr.Dataset, node: str):
     #mask = (ds.reference_node == node).compute()
     ds_sub = mask_node(ds, node) #ds.where(mask, drop=True)
     scale = pixels_to_cm()
-    ay = ds_sub.acceleration.sel(coord='y', node=node)
-    ax = ds_sub.acceleration.sel(coord='x', node=node)
 
-    ay = ay.max(dim='time', skipna=True)
-    ax = ax.max(dim='time', skipna=True)
+    ay = ds_sub.acceleration.sel(coord='y', node=node) * scale
+    ax = ds_sub.acceleration.sel(coord='x', node=node) * scale
+    a_mag = np.sqrt(ay**2 + ax**2)
 
-    return ay, ax
+    # the following calculations are being performed on dask, so even though NaN padding is removed it will throw warning, therefore catch warnings and run compute()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning, message='invalid value encountered in divide')
+        warnings.filterwarnings('ignore', category=RuntimeWarning, message='All-NaN slice encountered')
+        # summaries
+        ay_max = ay.max(dim='time', skipna=True)
+        ax_max = ax.max(dim='time', skipna=True)
+        a_mag_max = a_mag.max(dim='time', skipna=True)
+
+        ay_mean = ay.mean(dim='time', skipna=True)
+        ax_mean = ax.mean(dim='time', skipna=True)
+        a_mag_mean = a_mag.mean(dim='time', skipna=True)
+
+        ay_std = ay.std(dim='time', skipna=True)
+        ax_std = ax.std(dim='time', skipna=True)
+        a_mag_std = a_mag.std(dim='time', skipna=True)
+
+        (ay_max, ax_max, a_mag_max, ay_mean, ax_mean, a_mag_mean, ay_std, ax_std, a_mag_std) = dask.compute(
+            ay_max,
+            ax_max,
+            a_mag_max,
+            ay_mean,
+            ax_mean,
+            a_mag_mean,
+            ay_std,
+            ax_std,
+            a_mag_std
+        )
+
+    return {
+        'ay_max': ay_max.values,
+        'ax_max': ax_max.values,
+        'a_mag_max': a_mag_max.values,
+        'ay_mean': ay_mean.values,
+        'ax_mean': ax_mean.values,
+        'a_mag_mean': a_mag_mean.values,
+        'ay_std': ay_std.values,
+        'ax_std': ax_std.values,
+        'a_mag_std': a_mag_std.values
+    }
