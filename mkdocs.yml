@@ -1,0 +1,17 @@
+site_name: neurokinematics
+repo_url: https://github.com/cjblack/neurokinematics
+
+theme:
+  name: material
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+
+nav:
+  - Home: index.md
+  - Pose: pose.md
