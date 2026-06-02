@@ -91,4 +91,4 @@ plot_movement_erps_probe(
 ### Outputs
 - Plot of average evoked response across selected channels with respect to movement event
 
-![Example ERPs](r_hindpaw_end_average_erp_across_chans.png)
+![Example ERPs](assets/r_hindpaw_end_average_erp_across_chans.png)
