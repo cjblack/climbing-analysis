@@ -18,6 +18,9 @@ from neurokinematics.io import load_yaml, save_yaml, load_zarr, load_parquet
 from neurokinematics.pose.utils import pixels_to_cm
 from neurokinematics.pose.features import velocity_summary, acceleration_summary, extract_metadata
 
+# stats
+from neurokinematics.stats import get_model as get_stats_model
+
 MANDATORY_GROUP_SPEC_KEYS = ['group_id', 'output_root', 'subjects']
 
 class ExperimentGroup:
@@ -119,18 +122,20 @@ class ExperimentGroup:
             self.subjects.append(s)
             self.group_specs['runtime']['subjects'].append({'spec': str(s.subject_spec_path.relative_to(self.subject_root).parent)})
 
-    def process_subjects(self):
-        for subj in self.subjects:
-            subj.process_sessions()
-    
-    def par_process_subjects(self):
-        for subject in self.subjects:
-            subject.par_process_sessions()
+    def process_subjects(self, method: str = 'sequential'):
+        if method == 'sequential':
+            for subj in self.subjects:
+                subj.process_sessions()
+        elif method == 'parallel':
+            for subject in self.subjects:
+                subject.par_process_sessions()
+        else:
+            raise ValueError("Incorrect method selected. Please use either 'sequential' for sequential processing, or 'parallel' for parallel processing.")
 
     def add_subjects(self):
         pass
 
-    def create_summary(self, type: str):
+    def summarize(self, type: str):
         """High-level function to make creating summaries easier.
 
         Args:
@@ -216,3 +221,12 @@ class ExperimentGroup:
 
         df.to_parquet(self.dirs['summaries']/'pose_metrics.parquet')
         self.pose_summary = df
+
+    def analyse(self, model: str, data: str, params: dict):
+        data_path = self.dirs['summaries'] / data
+        if not data_path.exists():
+            raise FileNotFoundError(f"No summary data found at {data_path}. Run summarize() first.")
+        df = load_parquet(data_path, method='pandas')
+
+        
+        pass
