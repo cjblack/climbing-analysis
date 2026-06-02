@@ -222,11 +222,15 @@ class ExperimentGroup:
         df.to_parquet(self.dirs['summaries']/'pose_metrics.parquet')
         self.pose_summary = df
 
-    def analyse(self, model: str, data: str, params: dict):
+    def analyse(self, framework: str, model: str, data: str, params: dict):
+        
         data_path = self.dirs['summaries'] / data
+        
         if not data_path.exists():
             raise FileNotFoundError(f"No summary data found at {data_path}. Run summarize() first.")
+        
         df = load_parquet(data_path, method='pandas')
 
+        model_fn = get_stats_model(framework = framework, model = model)
         
-        pass
+        return model_fn(df, params, save_path = self.dirs['results'])
