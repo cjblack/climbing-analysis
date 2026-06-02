@@ -18,10 +18,12 @@ dependencies:
   - xmltodict
   - xarray
   - zarr
+  - pymc
   - pyyaml
   - pytest
   - pip
   - pip:
+      - arviz
       - open-ephys-python-tools
       - spikeinterface
       - -e .
