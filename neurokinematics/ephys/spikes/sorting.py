@@ -10,6 +10,7 @@ Upcoming tests for Neuropixels recordings.
 
 from pathlib import Path
 from spikeinterface import create_sorting_analyzer
+from spikeinterface.preprocessing import apply_preprocessing_pipeline, PreprocessingPipeline
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.sorters import run_sorter
 #from spikeinterface.qualitymetrics import compute_quality_metrics # future deprecation - remove after tests
@@ -18,7 +19,8 @@ from neurokinematics.io import save_dataframe
 from neurokinematics.ephys.io import *
 from neurokinematics.ephys.utils import create_probe
 
-def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None): 
+def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None,
+         bad_channels: list | None = None):
     """Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe.
     Consequently, this has only been tested with the default parameters. More tests are required for other recording setups.
 
@@ -41,8 +43,8 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
         ...     cfg_file = 'spike_sorting_cfg.yaml'
         ...     )
     """
-    # Load sorting params
-    sorting_cfg = get_sorting_cfg(cfg_file)
+    # Load sorting params — accept either a config filename or an already-loaded dict
+    sorting_cfg = cfg_file if isinstance(cfg_file, dict) else get_sorting_cfg(cfg_file)
     
     rec_type = sorting_cfg['rec_type']
     sorter = sorting_cfg['sorter']
@@ -53,35 +55,64 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
     stream_name = sorting_cfg['stream_name']
     to_compute = sorting_cfg['to_compute']
     quality_metrics = sorting_cfg['quality_metrics']
+    # optional pre-sort pipeline — absent in most configs (kilosort filters
+    # internally), so default to None rather than KeyError.
+    preprocessing_steps = sorting_cfg.get('preprocess', None)
     
     data_path = Path(data_path) # windows path
-    if save_path:
-        save_path = Path(save_path)
-        output_folder = save_path / sorter # when spikeinterface runs kilosort4, this folder will be created
-        recording_path = save_path / sorter / 'recording.dat'
-        phy_folder = save_path / sorter / 'phy_output'
-        qual_metrics_path = save_path / 'spike_qc_metrics.csv'
-    else:
-        save_path = Path(data_path)
-        output_folder = save_path / sorter # set output folder for kilosort
-        recording_path = save_path / sorter / 'recording.dat'
-        phy_folder = save_path / sorter / 'phy_output'
-        qual_metrics_path = save_path / 'spike_qc_metrics.csv'
-
+    save_path = Path(save_path) if save_path else Path(data_path)
+    output_folder  = save_path / sorter            # spikeinterface creates this when running kilosort4
+    phy_folder     = save_path / sorter / 'phy_output'
+    # export_to_phy writes the recording binary here as 'recording.dat'
+    recording_path = phy_folder / 'recording.dat'
+    qual_metrics_path = save_path / 'spike_qc_metrics.csv'
 
     recording = read_data(data_path=Path(data_path), rec_type=rec_type, stream_name=stream_name)
     probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
     recording = recording.set_probe(probe, group_mode=group_mode) # sets probe
 
+    # drop QC/user-selected bad channels before sorting (kilosort filters
+    # internally, so we remove them from the raw recording)
+    if bad_channels:
+        bad_set = {str(b) for b in bad_channels}
+        to_remove = [c for c in recording.get_channel_ids() if str(c) in bad_set]
+        if to_remove:
+            recording = recording.remove_channels(to_remove)
+
+    # optional pre-sort preprocessing pipeline (only if the config defines one)
+    if preprocessing_steps:
+        recording = preprocess(recording, preprocessing_steps)
+
     # Run spikesorting
     sorting = run_sorter(sorter_name=sorter, recording=recording, folder=output_folder)
 
-    # save recording as binary format to kilosort4 folder
-    recording.save_to_folder(data_path=recording_path) # might not need to run this step...**
     analyzer, metrics = sorting_analyzer(sorting, recording, data_path, compute_dict = to_compute, quality_metrics = quality_metrics, save_path = save_path) # create sorting analyzer
     save_dataframe(metrics, qual_metrics_path, storage_format='csv') # save quality metrics
     export_to_phy(analyzer, output_folder=phy_folder) # export to phy for visualization
-    return sorting, recording, probe, analyzer, metrics
+
+    # label-only auto-curation from the quality metrics -> writes phy cluster_group.tsv
+    # (so phy opens with suggestions) and a curated_units.csv. Non-destructive: the
+    # human remains the final authority on unit identity in phy.
+    from neurokinematics.ephys.spikes.curation import auto_curate
+    curation_cfg = sorting_cfg.get('curation', {}) if isinstance(sorting_cfg, dict) else {}
+    _, curated_units_path = auto_curate(
+        metrics,
+        rules=curation_cfg.get('rules'),
+        phy_folder=phy_folder,
+        save_path=save_path,
+        fail_label=curation_cfg.get('fail_label', 'mua'),
+    )
+
+    file_outputs = {
+        'spike_quality_metrics': {'path': str(qual_metrics_path), 'file_type': qual_metrics_path.suffix, 'attrs': {}},
+        'curated_units': {'path': str(curated_units_path), 'file_type': '.csv', 'attrs': {}},
+        'phy': {'path': str(phy_folder), 'file_type': 'phy output folder', 'attrs': {}},
+        'recording': {'path': str(recording_path), 'file_type': recording_path.suffix, 'attrs': {}},
+        'sorting_analyzer': {'path': str(save_path / 'sorting_analyzer'), 'file_type': 'sorting analyzer dir', 'attrs': {}},
+        sorter: {'path': str(save_path / sorter), 'file_type': f'{sorter} dir', 'attrs': {}}
+    }
+
+    return sorting, recording, probe, analyzer, metrics, file_outputs
 
 def sorting_analyzer(sorting, recording, data_path, compute_dict: dict, quality_metrics: list, save_path: Path | str | None = None):
     """
@@ -97,3 +128,10 @@ def sorting_analyzer(sorting, recording, data_path, compute_dict: dict, quality_
     _ = analyzer.compute('principal_components', n_components=5, mode="by_channel_local")
     metrics = compute_quality_metrics(analyzer, metric_names = quality_metrics)
     return analyzer, metrics
+
+def preprocess(recording, preprocessing_dict):
+
+    preprocessed_recording = apply_preprocessing_pipeline(recording, preprocessing_dict)
+
+
+    return preprocessed_recording
