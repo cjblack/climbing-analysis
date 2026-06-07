@@ -430,6 +430,52 @@ def load_config(filename: Path | str, config_type: str | None = None):
     
     return config
 
+def load_file(file_path: Path | str, method: str = 'pandas'):
+    """
+    Generic loader that dispatches based on file suffix.
+    Returns a pandas DataFrame for tabular formats, or the raw object for others.
+
+    Supported suffixes
+    ------------------
+    .csv      → load_csv  (pandas or dask)
+    .parquet  → load_parquet (pandas or dask)
+    .pkl / .pickle → load_pickle
+    .zarr     → load_zarr (returns xarray Dataset with method='xarray')
+    .json     → load_json
+    .yaml / .yml → load_yaml
+    .npy      → numpy.load
+
+    Args:
+        file_path (Path | str): Path to the file.
+        method (str): Passed to the underlying loader where applicable. Defaults to 'pandas'.
+
+    Returns:
+        Loaded data in the appropriate format.
+    """
+    file_path = Path(file_path)
+    suffix    = file_path.suffix.lower()
+
+    dispatch = {
+        '.csv':     lambda: load_csv(file_path, method=method),
+        '.parquet': lambda: load_parquet(file_path, method=method),
+        '.pkl':     lambda: load_pickle(file_path),
+        '.pickle':  lambda: load_pickle(file_path),
+        '.zarr':    lambda: load_zarr(file_path, method='xarray'),
+        '.json':    lambda: load_json(file_path),
+        '.yaml':    lambda: load_yaml(file_path),
+        '.yml':     lambda: load_yaml(file_path),
+        '.npy':     lambda: np.load(file_path, allow_pickle=True),
+    }
+
+    loader = dispatch.get(suffix)
+    if loader is None:
+        raise ValueError(
+            f"No loader registered for suffix '{suffix}'. "
+            f"Supported: {list(dispatch.keys())}"
+        )
+    return loader()
+
+
 def load_yaml(file_path: Path | str):
     """Load yaml file.
 
