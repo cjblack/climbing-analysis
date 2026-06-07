@@ -21,7 +21,9 @@ def pad_movements(movement_list: list, pad_value = np.nan):
         padded (ndarray): Array containing padded data
         mov_list (list): List containing metadata for each 'event'
         valid (ndarray): Array containing boolean mask for samples, used to remove padded values during analysis
-        lengths (ndarray): Array containing length in samples of each event 
+        lengths (ndarray): Array containing length in samples of each event
+        padded_scores (ndarray | None): Padded per-node confidence scores
+            (event, time, node), or None if scores were not available.
     """
 
     lengths = np.array([mv['node_array'].shape[0] for mv in movement_list])
@@ -37,6 +39,11 @@ def pad_movements(movement_list: list, pad_value = np.nan):
         dtype = float
     )
 
+    # pad per-node confidence scores in parallel, when present
+    has_scores = movement_list[0].get('score_array') is not None
+    padded_scores = (np.full((n_events, max_len, n_nodes), pad_value, dtype=float)
+                     if has_scores else None)
+
     valid = np.zeros((n_events, max_len), dtype=bool)
     mov_list = [None] * n_events
 
@@ -44,6 +51,9 @@ def pad_movements(movement_list: list, pad_value = np.nan):
         mov_len = movement['node_array'].shape[0]
         padded[mov_id, :mov_len, :, :] = movement['node_array']
         valid[mov_id, :mov_len] = True
+
+        if has_scores and movement.get('score_array') is not None:
+            padded_scores[mov_id, :mov_len, :] = movement['score_array']
 
         # ensuring order of metadata  - this is quite redundant
         mov_list[mov_id] = {
@@ -58,8 +68,8 @@ def pad_movements(movement_list: list, pad_value = np.nan):
             'type': movement['type'],
             'frame_rate': movement['frame_rate']
         }
-    
-    return padded, mov_list, valid, lengths
+
+    return padded, mov_list, valid, lengths, padded_scores
 
 
 def resample_padded_pose(movement_data: np.ndarray, valid: np.ndarray, fps: float, bin_edges: np.ndarray, method: str = 'mean'):
@@ -141,7 +151,7 @@ def resample_padded_pose(movement_data: np.ndarray, valid: np.ndarray, fps: floa
 
     return pose_resampled, valid_bins
 
-def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.ndarray, lengths: np.ndarray, save_path: Path | str | None = None):
+def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.ndarray, lengths: np.ndarray, padded_scores: np.ndarray | None = None, save_path: Path | str | None = None):
     """Creates xarray dataset and optionally saves to zarr store
 
     Args:
@@ -149,6 +159,9 @@ def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.nd
         movement_list (list): List of movement metadata
         valid (ndarray): Array containing boolean mask for samples
         lengths (ndarray): _description_
+        padded_scores (ndarray | None, optional): Padded per-node confidence
+            scores (event, time, node). Stored as the ``confidence`` variable
+            when provided. Defaults to None.
         save_path (Path | str | None, optional): Path to save zarr store. Defaults to None.
 
     Returns:
@@ -214,11 +227,18 @@ def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.nd
        }
     )
     
+    # per-node confidence scores travel alongside position when available
+    if padded_scores is not None:
+        ds['confidence'] = (['event', 'time', 'node'], padded_scores)
+
     ds['velocity'] = compute_velocity(ds['position'], dim='time')
     ds['speed'] = compute_speed(ds['velocity'], dim='coord')
     ds['acceleration'] = compute_acceleration(ds['velocity'], dim='time')
 
-    ds.attrs = {'features': ['position', 'velocity', 'speed', 'acceleration']}
+    features = ['position', 'velocity', 'speed', 'acceleration']
+    if padded_scores is not None:
+        features.append('confidence')
+    ds.attrs = {'features': features}
 
     if save_path:
         save_path = Path(save_path) / 'movement_features.zarr'
