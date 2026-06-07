@@ -125,19 +125,54 @@ def save_df_list(df_list):
             store.put(name,df)
             store.get_storer(name).attrs.metadata = df.attrs
 
-def create_df(locs, node_locs,fps=200.):
+def _node_point_score(point_scores, node_idx):
+    """Per-frame point/confidence score for one node (instance 0)."""
+    arr = np.asarray(point_scores)
+    if arr.ndim >= 3:      # (frames, nodes, instances)
+        return arr[:, node_idx, 0]
+    if arr.ndim == 2:      # (frames, nodes)
+        return arr[:, node_idx]
+    return arr             # (frames,)
+
+
+def _frame_score(scores):
+    """Per-frame instance/tracking score (instance 0)."""
+    arr = np.asarray(scores)
+    if arr.ndim >= 2:      # (frames, instances)
+        return arr[:, 0]
+    return arr             # (frames,)
+
+
+def create_df(locs, node_locs, fps=200.,
+              point_scores=None, instance_scores=None, tracking_scores=None):
     '''
-    Creates a data frame with predictions (x,y coordinates) for each joint, and appends timestamps based on frame rate
+    Creates a data frame with predictions (x,y coordinates) for each joint, and appends timestamps based on frame rate.
+
+    When confidence scores are supplied they are stored alongside the coordinates so
+    they propagate to every downstream file:
+      - ``<node>_score``   : per-node point score (confidence per body part)
+      - ``instance_score`` : overall confidence for the animal/object in that frame
+      - ``tracking_score`` : confidence of identity assignment over time
+
     :param locs:
     :param node_locs:
     :param fps:
+    :param point_scores: per-node point scores, shape (frames, nodes[, instances]).
+    :param instance_scores: per-frame instance scores.
+    :param tracking_scores: per-frame tracking scores.
     :return:
     '''
     locDictionary = dict()
     for node, val in node_locs.items():
         locDictionary[node+'_X'] = locs[:,val,0,0]
         locDictionary[node+'_Y'] = locs[:,val,1,0]*-1
+        if point_scores is not None:
+            locDictionary[node+'_score'] = _node_point_score(point_scores, val)
     locDictionary['frame_id'] = np.arange(0,locs.shape[0],1) #timestamps in seconds
+    if instance_scores is not None:
+        locDictionary['instance_score'] = _frame_score(instance_scores)
+    if tracking_scores is not None:
+        locDictionary['tracking_score'] = _frame_score(tracking_scores)
     poseDf = pd.DataFrame(data=locDictionary)
     return poseDf
 
@@ -172,10 +207,16 @@ def load_file(filename,sample_rate=200.,preprocess=False):
 
     with h5py.File(filename, "r") as f:
         locations = f["tracks"][:].T  # x,y coords of labeled joints
+        point_scores = f["point_scores"][:].T
+        instance_scores = f["instance_scores"][:].T
+        tracking_scores = f["tracking_scores"][:].T
         node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
         node_locs = dict([(name, i) for i, name in enumerate(node_names)])  # create dictionary of {joint: idx}
     locations =fill_missing(locations)
-    poseDF = create_df(locations, node_locs)
+    poseDF = create_df(locations, node_locs,
+                       point_scores=point_scores,
+                       instance_scores=instance_scores,
+                       tracking_scores=tracking_scores)
     if preprocess==True:
         poseDF = KNP.remove_coordinate_jumps(poseDF)
     dir_info = os.path.split(filename) # file info
@@ -222,21 +263,31 @@ def dask_load_file(filename: str,sample_rate: float = 200., preprocess: dict | N
 
     with h5py.File(filename, "r") as f:
         locations = f["tracks"][:].T  # x,y coords of labeled joints
+        point_scores = f["point_scores"][:].T
+        instance_scores = f["instance_scores"][:].T
+        tracking_scores = f["tracking_scores"][:].T
         node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
         node_locs = dict([(name, i) for i, name in enumerate(node_names)])  # create dictionary of {joint: idx}
     #locations =fill_missing(locations)
     
     if preprocess is None:
         preprocess = {}
-        locations = fill_missing(locations)
+    # max gap (in frames) to interpolate across; longer gaps stay NaN. None
+    # keeps the original behaviour of filling every gap.
+    max_gap = preprocess.get("max_gap", None)
+    if not preprocess:
+        locations = fill_missing(locations, max_gap=max_gap)
     if preprocess.get("fill_missing", True):
-        locations = fill_missing(locations)
+        locations = fill_missing(locations, max_gap=max_gap)
     if preprocess.get("confidence", {}).get("enabled", False):
-        locations = remove_low_confidence(locations, scores, thresh = preprocess['confidence'].get('thresh', 0.7))
+        locations = remove_low_confidence(locations, point_scores, thresh = preprocess['confidence'].get('thresh', 0.7), max_gap=max_gap)
     if preprocess.get("velocity", {}).get("enabled", False):
-        locations = remove_high_velocity(locations, thresh=preprocess['velocity'].get('thresh', 20.))
-    
-    df = create_df(locations, node_locs)
+        locations = remove_high_velocity(locations, thresh=preprocess['velocity'].get('thresh', 20.), max_gap=max_gap)
+
+    df = create_df(locations, node_locs,
+                   point_scores=point_scores,
+                   instance_scores=instance_scores,
+                   tracking_scores=tracking_scores)
 
     dir_info = os.path.split(filename) # file info
     exp_info = str.split(dir_info[1],'_') # experiment info

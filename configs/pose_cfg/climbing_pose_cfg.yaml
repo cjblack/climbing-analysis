@@ -4,6 +4,11 @@ pose_format:
   frame_rate: 200.
 pose_preprocessing:
   fill_missing: true
+  # Max gap (in frames) to interpolate across. Gaps longer than this are left as
+  # NaN rather than fabricated into a straight line, so long dropouts propagate
+  # downstream as missing data. null = interpolate every gap (original behaviour).
+  # e.g. at 200 fps, 20 frames = 100 ms.
+  max_gap: null
   confidence:
     enabled: false
     thresh: 0.7
