@@ -165,6 +165,32 @@ def fit_hierarchical_linear(df: str | Path | pd.DataFrame, params: dict | None =
         )
 
         
-        trace = pm.sample(samples, tune = tune, return_inference_data = True, random_seed = seed)
+        target_accept = params.get('target_accept', 0.9)
+        chains        = params.get('chains', 4)
+
+        # Sample normally — chains run in parallel where the platform allows.
+        # progressbar disabled: PyMC's rich Live display garbles the GUI log.
+        trace = pm.sample(
+            samples,
+            tune=tune,
+            chains=chains,
+            return_inferencedata=True,
+            random_seed=seed,
+            target_accept=target_accept,
+            progressbar=False,
+        )
+
+    # save trace as pickle (model excluded — not picklable due to compiled pytensor functions)
+    if save_path is not None:
+        import pickle
+        from datetime import datetime
+        save_path    = Path(save_path)
+        bayesian_dir = save_path / 'bayesian'
+        bayesian_dir.mkdir(parents=True, exist_ok=True)
+        date_str   = datetime.now().strftime('%Y%m%d_%H%M%S')
+        trace_path = bayesian_dir / f'hierarchical_linear_{date_str}.pkl'
+        with open(trace_path, 'wb') as f:
+            pickle.dump({'trace': trace, 'params': params}, f)
+        print(f"Trace saved to {trace_path}")
 
     return hierarchical, trace
