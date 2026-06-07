@@ -46,3 +46,6 @@ environment_redux.yml
 
 # local
 /templates/my_subjects/
+
+# tests
+NK/
