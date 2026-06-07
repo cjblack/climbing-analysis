@@ -1,0 +1,13 @@
+subject_id: SUBJECT_ID
+output_root: "path/to/outputroot"
+
+sessions:
+ - session_id: "2025-01-01"
+   session_config: "demo_session.yaml"
+   ephys_data_path: "path/to/ephys"
+   pose_data_path: "path/to/pose"
+
+ - session_id: "2025-01-02"
+   session_config: "demo_session.yaml"
+   ephys_data_path: "path/to/ephys"
+   pose_data_path: "path/to/pose"

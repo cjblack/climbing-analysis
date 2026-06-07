@@ -39,8 +39,13 @@ aws/
 #dj_config.py
 
 # environments
-environment.yml
 environment_redux.yml
 
 # deprecated
 /neurokinematics/multi_modal/utils.py
+
+# local
+/templates/my_subjects/
+
+# tests
+NK/

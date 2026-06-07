@@ -136,17 +136,17 @@ class ExperimentSession:
             self.output_root = Path(output_root)
 
         # create session directory
-        self.session_path = self.output_root / f"{self.session_id}_nk"
+        self.session_path = self.output_root / f"{self.session_id}"
         self.dirs = create_session_dirs(self.session_path)
 
         # create outputs monitor
         self.session_outputs = {}
+        self._output_history = {}   # name -> [past provenance records] (kept on overwrite)
         self.session_outputs_path = self.session_path / 'session_outputs.yaml'
 
-        # instantiate blank output file
+        # instantiate blank output file (nested {session_id, outputs} schema)
         if not self.session_outputs_path.exists():
-            with open(self.session_outputs_path, "w") as f:
-                yaml.safe_dump(self.session_outputs, f)
+            self._write_session_outputs()
 
 
         if cfg is not None:
@@ -205,11 +205,14 @@ class ExperimentSession:
 
         if session.session_outputs_path.exists():
             with open(session.session_outputs_path, "r") as f:
-                session.session_outputs = yaml.safe_load(f) or {}
+                raw = yaml.safe_load(f)
+            session.session_outputs = cls._parse_session_outputs(raw)
+            session._output_history = (raw.get('history', {})
+                                       if isinstance(raw, dict) else {}) or {}
         else:
             session.session_outputs = {}
-            with open(session.session_outputs_path, "w") as f:
-                yaml.safe_dump(session.session_outputs, f, sort_keys = False)
+            session._output_history = {}
+            session._write_session_outputs()
 
         # recreate dirs
         if 'session_dirs' in runtime:
@@ -307,6 +310,14 @@ class ExperimentSession:
             file_type (str | None, optional): _description_. Defaults to None.
             attrs (dict | None, optional): _description_. Defaults to None.
         """
+        # provenance shared by every output in this record call
+        from neurokinematics.provenance import git_revision
+        git_commit  = git_revision()
+        config_hash = self._provenance_config_hash()
+        run_id      = datetime.now().strftime('%Y%m%d_%H%M%S')
+        if not hasattr(self, '_output_history'):
+            self._output_history = {}
+
         for key, val in file_outputs.items():
             name = key
             path = Path(val['path'])
@@ -322,22 +333,85 @@ class ExperimentSession:
                 stored_path = path
 
             if name in self.session_outputs:
-                warnings.warn(
-                    f"Overwriting existing output: {name}"
-                )
+                # archive the previous record (provenance lineage of re-runs)
+                self._output_history.setdefault(name, []).append(
+                    self.session_outputs[name])
 
             self.session_outputs[name] = {
                 "path": str(stored_path),
                 "created": datetime.now().isoformat(),
+                "run_id": run_id,             # identifies this processing run
                 "nk_version": nk_version,
+                "git_commit": git_commit,     # exact code state (+ '-dirty')
+                "config_hash": config_hash,   # params that produced this output
                 "file_type": file_type,
                 "attrs": attrs or {}
             }
 
-        session_outputs_path = self.session_path / "session_outputs.yaml"
+        self._write_session_outputs()
 
-        with open(session_outputs_path, "w") as f:
-            yaml.safe_dump(self.session_outputs, f, sort_keys=False)
+    def _write_session_outputs(self):
+        """Persist session_outputs.yaml as
+        ``{schema_version, session_id, provenance, outputs: {...}}``.
+
+        Output records stay nested under 'outputs' so metadata never leaks into
+        the outputs namespace; 'provenance' captures session-level code/input
+        versioning, and 'schema_version' lets future readers migrate the format.
+        """
+        from neurokinematics.provenance import git_revision, SCHEMA_VERSION
+        payload = {
+            'schema_version': SCHEMA_VERSION,
+            'session_id': self.session_id,
+            'provenance': {
+                'git_commit': git_revision(),
+                'nk_version': nk_version,
+                'inputs': self._provenance_inputs(),
+            },
+            'outputs': self.session_outputs,
+        }
+        # past records of overwritten outputs (omitted when there's no history)
+        if getattr(self, '_output_history', None):
+            payload['history'] = self._output_history
+        with open(self.session_outputs_path, "w") as f:
+            yaml.safe_dump(payload, f, sort_keys=False)
+
+    def _provenance_config_hash(self):
+        """Hash of all loaded configs — the parameter state for an output."""
+        from neurokinematics.provenance import hash_config
+        cfgs = {k: getattr(self, k, None) for k in
+                ('cfg', 'pose_cfg', 'sorting_cfg', 'lfp_preprocessing_cfg',
+                 'multimodal_cfg', 'models_cfg')}
+        return hash_config({k: v for k, v in cfgs.items() if v})
+
+    def _provenance_inputs(self):
+        """Cheap fingerprints of the session's raw inputs (cached per session)."""
+        cached = getattr(self, '_input_fp_cache', None)
+        if cached is not None:
+            return cached
+        from neurokinematics.provenance import fingerprint_input
+        fp = {}
+        if getattr(self, 'ephys_data_path', None):
+            fp['ephys'] = fingerprint_input(self.ephys_data_path)
+        if getattr(self, 'pose_data_path', None):
+            fp['pose'] = fingerprint_input(self.pose_data_path)
+        self._input_fp_cache = fp
+        return fp
+
+    @staticmethod
+    def _parse_session_outputs(data) -> dict:
+        """Extract the output records from loaded session_outputs.yaml content.
+
+        Handles the nested ``{session_id, outputs}`` schema and old flat files,
+        and defensively keeps only dict-valued entries so stray metadata keys
+        (e.g. a top-level 'session_id') never pollute the outputs dict.
+        """
+        if not isinstance(data, dict):
+            return {}
+        if 'outputs' in data and 'session_id' in data:
+            raw = data.get('outputs') or {}
+        else:
+            raw = data
+        return {k: v for k, v in raw.items() if isinstance(v, dict)}
     
 
     def _handle_existing_output(self, path: Path, mode: str):
@@ -383,6 +457,39 @@ class ExperimentSession:
         self.align_video() # align video to ephys
         self.align_movements() # align movement events to ephys
 
+    def process(self, type: str, mode: str = "skip"):
+        if type == "pose":
+            self.run_pose_processing(mode)
+        elif type == "spikes":
+            self.run_spike_sorting(mode)
+        elif type == "lfp":
+            self.run_lfp_processing(mode)
+
+    def align(self, type: str, mode: str = 'skip'):
+        """Temporally register data streams to the ephys clock.
+
+        'video' -> camera frames, 'movement' -> movement events, 'pose' -> both.
+        Neural segmentation lives in :meth:`epoch`, which consumes this output.
+        """
+        if type == 'video':
+            self.align_video(mode)
+        elif type == 'movement':
+            self.align_movements(mode)
+        elif type == 'pose':
+            self.align_video(mode)
+            self.align_movements(mode)
+
+    def epoch(self, type: str, mode: str = 'skip'):
+        """Segment neural data around aligned movement events.
+
+        Runs after :meth:`align` (epoching consumes the movement-event
+        alignment). 'spikes' -> movement-aligned rasters, 'lfp' -> ERPs.
+        """
+        if type == 'spikes':
+            self.epoch_spikes(mode)
+        elif type == 'lfp':
+            self.epoch_lfp(mode)
+
     @log_call(label='pose preprocessing', type='run')
     def run_pose_processing(self, mode: str = "skip"):
         """Run preprocessing on markerless pose data and store results
@@ -393,6 +500,12 @@ class ExperimentSession:
         Returns:
             Path: If processing occured and mode is 'skip', returns path to processed data
         """
+        if not getattr(self, 'pose_cfg', None):
+            raise ValueError(
+                "No pose config is loaded for this session. "
+                "Recreate the session with a valid session config (e.g. demo_session.yaml)."
+            )
+
         # overwrite utility
         expected_output = self.dirs['pose'] / 'pose_data.csv'
 
@@ -403,26 +516,125 @@ class ExperimentSession:
         
         self.pose_processed, file_outputs = process_sleap(
             data_path = self.pose_data_path,
-            pose_cfg = self.cfg['configs']['pose'],
+            pose_cfg = self.pose_cfg,   # already-loaded config (robust to cfg nesting)
             save_path = self.dirs['pose']
         )
 
         self._record_session_output(file_outputs)
 
+    # ── Manual inspection (pairs with automated run_qc) ───────────────────────
+    # These wrap the same tooling the GUI uses, but as plain session methods so a
+    # script/notebook can do: run_qc(subject); session.open_in_phy(); session.inspect_pose()
+    # All GUI imports are lazy so importing the data layer never pulls in Qt.
+
+    def phy_output_dir(self):
+        """Path to this session's sorter ``phy_output`` folder, or None if unsorted."""
+        spikes = (getattr(self, 'dirs', {}) or {}).get('spikes')
+        if not spikes:
+            return None
+        hits = list(Path(spikes).glob('*/phy_output/params.py'))
+        return hits[0].parent if hits else None
+
+    def open_in_phy(self, env: str | None = None, gui: str | None = None,
+                    conda_exe: str | None = None):
+        """Open this session's spike-sorted data in phy2 for manual curation.
+
+        Resolves the sorter's ``phy_output`` folder and launches phy in the
+        configured conda environment. *env* / *gui* / *conda_exe* default to the
+        GUI's saved phy settings (File ▸ Settings); pass them to override.
+        Returns the phy_output path. Raises if the session isn't sorted yet or no
+        phy2 environment is configured.
+        """
+        from neurokinematics.gui.settings import launch_phy, load_settings
+        s = load_settings()
+        env = env or s.get('phy_env', '')
+        if not env:
+            raise ValueError(
+                "No phy2 environment configured. Pass env=... or set it in the "
+                "GUI under File > Settings.")
+        phy_dir = self.phy_output_dir()
+        if phy_dir is None:
+            raise FileNotFoundError(
+                "No phy_output found for this session — run spike sorting first.")
+        launch_phy(phy_dir, env=env,
+                   gui=gui or s.get('phy_gui', 'template-gui'),
+                   conda_exe=conda_exe or s.get('conda_exe', 'conda'))
+        return phy_dir
+
+    def inspect_pose(self, block: bool = True):
+        """Open the interactive pose-quality inspector for this session.
+
+        Shows raw-vs-processed traces and the per-keypoint confidence layout with
+        a what-if preview. Creates a Qt application if one isn't already running
+        (e.g. from a script or notebook). Returns the dialog.
+        """
+        from PySide6.QtWidgets import QApplication
+        from neurokinematics.gui.pose_inspector import PoseInspectDialog
+        existing = QApplication.instance()
+        app = existing or QApplication([])
+        dlg = PoseInspectDialog(self)
+        if existing is not None:
+            dlg.exec()          # modal within an already-running app (the GUI)
+        else:
+            dlg.show()
+            if block:
+                app.exec()      # standalone: run until the window is closed
+        return dlg
+
 
     
     @log_call(label='spike sorting', type='run')
-    def run_spike_sorting(self, mode: str = "skip"):
+    def preprocess_spikes(self):
+        """Detect bad channels ahead of sorting — no sorting is performed.
+
+        Reads the ephys recording, applies the probe + a bandpass filter, and runs
+        SpikeInterface bad-channel detection. Returns the detection dict (with
+        in-memory trace snippets for review) and writes a 'detected' bad-channel
+        QC summary into the session's spikes dir. Pair with
+        ``run_spike_sorting(bad_channels=...)`` to apply a decision.
+        """
+        if not getattr(self, 'sorting_cfg', None):
+            raise ValueError(
+                "No spike-sorting config is loaded for this session. "
+                "Recreate the session with a valid session config (e.g. demo_session.yaml)."
+            )
+        if not getattr(self, 'ephys_data_path', None):
+            raise ValueError("No ephys data is linked to this session.")
+
+        from neurokinematics.ephys.spikes.preprocessing import (
+            detect_bad_channels, write_bad_channel_report,
+        )
+        detection = detect_bad_channels(self.ephys_data_path, self.sorting_cfg)
+        write_bad_channel_report(self.dirs['spikes'], detection,
+                                 removed=[], policy='detected')
+        self._spike_detection = detection
+        return detection
+
+    def run_spike_sorting(self, mode: str = "skip", bad_channels: list | None = None,
+                          preprocess: bool = True):
         """Run spike sorting through SpikeInterface and store results
+
+        Preprocessing (bad-channel detection + QC report) runs first by default,
+        so every sort produces bad-channel QC. By default no channels are removed
+        (``bad_channels=None`` keeps all); pass a list to drop them, or use the
+        GUI's bad-channel review to choose interactively.
 
         Args:
             mode (str, optional): Determines whether to perform processing step. Options are 'skip, 'overwrite', or 'error'. 'skip' will be able to run if data isn't present, so reloading session will skip automatically. Use 'overwrite' to re-run. Defaults to "skip".
+            bad_channels (list, optional): Channel ids to drop before sorting (e.g. from the bad-channel QC review). None keeps all channels.
+            preprocess (bool, optional): Run bad-channel detection first (writes the QC report). Skipped automatically if a caller already ran it for this session. Defaults to True.
 
         Returns:
             Path: If spike sorting occured and mode is 'skip', returns path to sorting results
         """
 
-        
+
+        if not getattr(self, 'sorting_cfg', None):
+            raise ValueError(
+                "No spike-sorting config is loaded for this session. "
+                "Recreate the session with a valid session config (e.g. demo_session.yaml)."
+            )
+
         # overwrite utility
         expected_output = self.dirs['spikes'] / 'sorting_analyzer'
 
@@ -431,12 +643,39 @@ class ExperimentSession:
         if not should_run:
             return {"exists": True, "path": expected_output}
 
-        self.sorter, self.recording, self.probe, self.analyzer, self.spike_qc_metrics = sort(
+        # Preprocess first: detect bad channels + write QC report. Skipped if a
+        # caller (e.g. the GUI review flow) already detected for this session.
+        # A detection hiccup is logged but doesn't block the sort.
+        if preprocess and getattr(self, '_spike_detection', None) is None:
+            try:
+                self.preprocess_spikes()
+            except Exception as e:
+                print(f"[spike preprocessing] bad-channel detection skipped: {e}")
+
+        self.sorter, self.recording, self.probe, self.analyzer, self.spike_qc_metrics, file_outputs = sort(
             data_path = self.ephys_data_path,
-            cfg_file = self.cfg['configs']['spikes'],
-            save_path = self.dirs['spikes']
+            cfg_file = self.sorting_cfg,   # already-loaded config (robust to cfg nesting)
+            save_path = self.dirs['spikes'],
+            bad_channels = bad_channels,
         )
-    
+
+        # persist the final bad-channel decision alongside the sort for QC
+        try:
+            from neurokinematics.ephys.spikes.preprocessing import write_bad_channel_report
+            detection = getattr(self, '_spike_detection', None)
+            if detection is not None:
+                write_bad_channel_report(
+                    self.dirs['spikes'], detection,
+                    removed=bad_channels or [],
+                    policy='remove' if bad_channels else 'keep')
+        except Exception:
+            pass
+
+        # clear cached detection so a later re-sort detects afresh
+        self._spike_detection = None
+
+        self._record_session_output(file_outputs)
+
     @log_call(label='lfp preprocessing', type='run')
     def run_lfp_processing(self, mode: str = "skip"):
         """Run preprocessing on raw LFP data (chunk, filter, downsample) and store results

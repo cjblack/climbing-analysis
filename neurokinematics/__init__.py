@@ -9,5 +9,8 @@ except PackageNotFoundError:
 
 
 
-# Import specific modules for simplicity
+# Core top-level API
 from .data.session import ExperimentSession
+from .data.subject import ExperimentSubject
+from .data.group import ExperimentGroup
+from . import io

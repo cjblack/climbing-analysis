@@ -72,7 +72,7 @@ plot_waveforms(
 - Plot waveforms of selected units
 - Optionally saves waveform figures
 
-![Example waveforms](unit_waveforms.png)
+![Example waveforms](assets/unit_waveforms.png)
 
 ## Movement-aligned rasters and PSTHs
 This step requires a pre-computed movement alignment file (`movement_event_alignment.csv`).
@@ -123,5 +123,5 @@ plot_movement_psth(raster_df, unit_ids, movement_plot_params) # plot with respec
 - Values set in `movement_plot_params` determine what node and movement event is plotted.
 - Optionally save the plot as a `.png`.
 
-![Example rasters](r_hindpaw_end_3_units_psth.png) ![Example rasters](r_hindpaw_max_3_units_psth.png)
+![Example rasters](assets/r_hindpaw_end_3_units_psth.png) ![Example rasters](assets/r_hindpaw_max_3_units_psth.png)
 

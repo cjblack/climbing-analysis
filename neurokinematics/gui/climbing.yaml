@@ -1,0 +1,4 @@
+group_id: climbing
+output_root: D:/ClimbingData/NKPROC/TEST
+subjects:
+- spec: C:/Users/Chris/neurokinematics/templates/my_subjects/climbing_group.yaml

@@ -131,6 +131,25 @@ This example shows:
 - Video-ephys alignment
 - Movement-ephys alignment
 
+## Graphical interface
+
+_Status: the GUI is under active development — core workflows are functional, dedicated documentation in progress._
+
+A desktop application (PySide6) for running and inspecting pipelines: loading groups, subjects, and sessions, driving processing / alignment / epoching, reviewing quality control and visualising results.
+
+![neurokinematics GUI](docs/assets/nk_window.png)
+
+Highlights:
+- **Spec-drive workspace**: load a project, group, or subject and navigate through your data.
+- **Run pipelines**: process (pose / spikes / LFP), align, and epoch per session or in batch, with overwrite controls.
+- **Qualty control**: use interactive plot viewers to examine raw-vs-processed pose data, incorporate phy2 environment for easy access for manual curation of sorted spikes.
+- **Reproducibility**: every output is stamped with code version, parameters, and inputs that produced it.
+
+Launch from an activated environment:
+```bash
+python -m neurokinematics.gui.app
+```
+
 ## Scope and current support
 
 This package has been developed and tested primarily on a specific experimental setup:

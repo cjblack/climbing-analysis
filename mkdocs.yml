@@ -1,0 +1,35 @@
+site_name: neurokinematics
+repo_url: https://github.com/cjblack/neurokinematics
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: lime
+      accent: lime
+      toggle:
+        icon: material/brightness-7
+        name: Switch to light mode
+    - scheme: default
+      primary: lime
+      accent: lime
+      toggle:
+        icon: material/brightness-4
+        name: Switch to dark mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+
+nav:
+  - Home: index.md
+  - Data: data.md
+  - Pose: pose.md
+  - Spikes: spikes.md
+  - LFP: lfp.md
+  - Multimodal Alignment: multi_modal.md
+  - Development: development.md

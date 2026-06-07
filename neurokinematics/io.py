@@ -342,6 +342,23 @@ def load_zarr(file_path: str, dataset: str | None = None, mode: str ="r", method
         data = xr.open_zarr(file_path)
         return data
 
+def load_parquet(file_path: str, method: str = "pandas"):
+    """Open parquet files.
+
+    Args:
+        file_path (str): Path including file name ending in '.parquet'
+        method (str, optional): Method for loading data. Options are "pandas" or "dask".  Use "dask" for lazy loading. Defaults to "pandas".
+
+    Returns:
+        _type_: _description_
+    """
+    file_path = _require_file(file_path)
+    if method == "pandas":
+        df = pd.read_parquet(file_path)
+        return df
+    elif method == "dask":
+        df = dd.read_parquet(file_path)
+        return df
 
 def load_memmap(file_path: str, shape: tuple, dtype: str ="float32", mode: str = "r"):
     """Load a numpy memmap file
@@ -386,7 +403,7 @@ def load_pickle(filename: str, method: str = 'default'):
     return data
 
 def load_config(filename: Path | str, config_type: str | None = None):
-    """Load yaml files as dictionaries.
+    """Load yaml config files as dictionaries - extension of load_yaml.
 
     Args:
         filename (Path | str): Config file name ending in '.yaml'
@@ -404,11 +421,73 @@ def load_config(filename: Path | str, config_type: str | None = None):
     else:
         file_path = Path(filename) # for tests
 
-    file_path = _require_file(file_path)
+    #file_path = _require_file(file_path)
 
     #if type(config_type) == str:
     #    filename = CFG_PATHS[config_type] / filename
-    with open(file_path, "r") as f:
-        config = yaml.load(f, Loader=yaml.SafeLoader)
+    #with open(file_path, "r") as f:
+    config = load_yaml(file_path)
     
     return config
+
+def load_file(file_path: Path | str, method: str = 'pandas'):
+    """
+    Generic loader that dispatches based on file suffix.
+    Returns a pandas DataFrame for tabular formats, or the raw object for others.
+
+    Supported suffixes
+    ------------------
+    .csv      → load_csv  (pandas or dask)
+    .parquet  → load_parquet (pandas or dask)
+    .pkl / .pickle → load_pickle
+    .zarr     → load_zarr (returns xarray Dataset with method='xarray')
+    .json     → load_json
+    .yaml / .yml → load_yaml
+    .npy      → numpy.load
+
+    Args:
+        file_path (Path | str): Path to the file.
+        method (str): Passed to the underlying loader where applicable. Defaults to 'pandas'.
+
+    Returns:
+        Loaded data in the appropriate format.
+    """
+    file_path = Path(file_path)
+    suffix    = file_path.suffix.lower()
+
+    dispatch = {
+        '.csv':     lambda: load_csv(file_path, method=method),
+        '.parquet': lambda: load_parquet(file_path, method=method),
+        '.pkl':     lambda: load_pickle(file_path),
+        '.pickle':  lambda: load_pickle(file_path),
+        '.zarr':    lambda: load_zarr(file_path, method='xarray'),
+        '.json':    lambda: load_json(file_path),
+        '.yaml':    lambda: load_yaml(file_path),
+        '.yml':     lambda: load_yaml(file_path),
+        '.npy':     lambda: np.load(file_path, allow_pickle=True),
+    }
+
+    loader = dispatch.get(suffix)
+    if loader is None:
+        raise ValueError(
+            f"No loader registered for suffix '{suffix}'. "
+            f"Supported: {list(dispatch.keys())}"
+        )
+    return loader()
+
+
+def load_yaml(file_path: Path | str):
+    """Load yaml file.
+
+    Args:
+        file_path (Path | str): File path for yaml file to load.
+
+    Returns:
+        data (dict): Dictionary containing data in yaml file.
+    """
+
+    file_path = _require_file(file_path)
+    with open(file_path, "r") as f:
+        data = yaml.load(f, Loader = yaml.SafeLoader)
+
+    return data

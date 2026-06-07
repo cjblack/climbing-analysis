@@ -5,8 +5,38 @@ It is designed to coordinate workflows involving electrophysiology and markerles
 
 ## Module structure
 
+- `group.py` &rarr; group class for orchestrating group-level analyses and statistics
+- `subject.py` &rarr; subject class for orchestrating subject data
 - `session.py` &rarr; session class for orchestrating preprocessing, alignment, and data management
 - `processed.py` &rarr; lightweight classes for accessing processed outputs and associated metadata
+
+## Creating a group
+
+Groups provide a way to examine relationships across subjects.
+
+```python
+from neurokinematics import ExperimentGroup
+
+group = ExperimentGroup(
+    group_specs = "path/to/group_specs.yaml",
+    project_path = "path/to/project/root",
+    name = "project_name"
+)
+```
+
+### What this does
+- Instantiates a group class
+- Creates subject output folders, if not already created
+
+### Inputs
+- User defined `group_spec.yaml` file that identifies group details and subjects
+- Location for storing the project, which contains various groups, and associated subjects
+- Desired name of project
+
+### Outputs
+- `ExperimentGroup` object
+- Access to subject and session level operations, and group level analyses.
+
 
 ## Loading a session
 

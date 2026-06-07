@@ -70,14 +70,20 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
             mov_len = end_idx-start_idx
             max_.append(start_idx+np.argmax(y_diff[start_idx:end_idx]))
             node_array = np.zeros((mov_len, len(node_list), 2)) #2 coordinates
+            # carry per-node confidence (point scores) through if present
+            has_scores = all((nd + '_score') in df.columns for nd in node_list)
+            score_array = np.full((mov_len, len(node_list)), np.nan) if has_scores else None
             node_array_list = []
             for ii, nd in enumerate(node_list):
                  node_array[:, ii, 0] = df[nd+'_X'].iloc[start_idx:end_idx].to_numpy() #[start_end[idxs][0]:start_end[idxs][1]] # x-coord
                  node_array[:, ii, 1] = df[nd+'_Y'].iloc[start_idx:end_idx].to_numpy() #[start_end[idxs][0]:start_end[idxs][1]] # y-coord
+                 if has_scores:
+                     score_array[:, ii] = df[nd+'_score'].iloc[start_idx:end_idx].to_numpy()
                  node_array_list.append(nd) # append double to keep track
-            
+
             node_array_dict = {
                 'node_array': node_array,
+                'score_array': score_array,
                 'node_list': node_array_list,
                 'start': idxs[0], #start_end[idxs][0],
                 'end': idxs[1], #start_end[idxs][1],

@@ -10,10 +10,14 @@ dependencies:
   - scipy
   - pandas=2.3.3
   - matplotlib
+  - gxx
+  - graphviz
+  - python-graphviz
   - h5py
   - pytables
   - psutil
   - scikit-learn
+  - seaborn
   - datajoint
   - dask
   - dask-jobqueue
@@ -22,11 +26,17 @@ dependencies:
   - xmltodict
   - xarray
   - zarr
+  - pymc
   - pyyaml
   - pytest
   - pip
   - pip:
       - --extra-index-url https://download.pytorch.org/whl/cu128
+      - arviz
+      - mkdocs
+      - mkdocs-material
+      - mkdocstrings[python]
+      - PySide6
       - torch
       - torchvision
       - torchaudio

@@ -48,8 +48,8 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
         PosixPath('path/to/outputs/pose_data.csv')
     """
 
-    # now requires config file
-    cfg = load_config(pose_cfg, config_type='pose') #POSE_PREPROCESSING_CONFIG_PATH / preprocess_cfg)
+    # now requires config file — accept either a filename or an already-loaded dict
+    cfg = pose_cfg if isinstance(pose_cfg, dict) else load_config(pose_cfg, config_type='pose')
     preprocessing = cfg['pose_preprocessing']
     file_format = cfg['pose_format']['file_format']
     sample_rate = cfg['pose_format']['frame_rate']
@@ -110,8 +110,8 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
         
         # convert and save movement_lists
         movement_lists = np.concat(movement_lists) # concatenate lists
-        padded, mov_list, valid, lengths = pad_movements(movement_lists) # pad movements so they are all the same length - easier for downstream analysis
-        movement_ds = build_movement_dataset(padded, mov_list, valid, lengths, save_path = save_path) # build xarray dataset and save to zarr store
+        padded, mov_list, valid, lengths, padded_scores = pad_movements(movement_lists) # pad movements so they are all the same length - easier for downstream analysis
+        movement_ds = build_movement_dataset(padded, mov_list, valid, lengths, padded_scores = padded_scores, save_path = save_path) # build xarray dataset and save to zarr store
         
         file_outputs['movement_events'] = {'path': str(me_output_path), 'file_type': str(me_output_path.suffix), 'attrs':{}}
         file_outputs['movement_features'] = {'path': str(save_path / 'movement_features.zarr'), 'file_type': '.zarr', 'attrs': {}} # future revamp of save structure
