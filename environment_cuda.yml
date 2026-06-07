@@ -36,6 +36,7 @@ dependencies:
       - mkdocs
       - mkdocs-material
       - mkdocstrings[python]
+      - PySide6
       - torch
       - torchvision
       - torchaudio
