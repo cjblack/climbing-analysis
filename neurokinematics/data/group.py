@@ -10,6 +10,7 @@ from tqdm.auto import tqdm as atqdm
 # data
 from neurokinematics.data.subject import ExperimentSubject
 from neurokinematics.data.project import NKProject
+from neurokinematics.data.utils import IndexedList
 
 # io
 from neurokinematics.io import load_yaml, save_yaml, load_zarr, load_parquet
@@ -21,7 +22,7 @@ from neurokinematics.pose.features import velocity_summary, acceleration_summary
 # stats
 from neurokinematics.stats import get_model as get_stats_model
 
-MANDATORY_GROUP_SPEC_KEYS = ['group_id', 'output_root', 'subjects']
+MANDATORY_GROUP_SPEC_KEYS = ['group_id', 'subjects']
 
 class ExperimentGroup:
     """Class for orchestrating group workflows for multiple subjects.
@@ -39,7 +40,7 @@ class ExperimentGroup:
 
         project = NKProject(root = project_path, name = name)
         if group_specs is not None:
-            self.project_path = Path(project_path)
+            self.project_path = project.root#Path(project_path)
             self.project_name = project.name
             self.group_specs = self._load_group_specs(group_specs)
             self.group_specs['project_name'] = self.project_name
@@ -66,16 +67,45 @@ class ExperimentGroup:
         group.group_path = group_path
         group.group_specs = load_yaml(group_spec_path)
         group.group_id = group.group_specs['group_id']
-        group.dirs = group.group_specs['folders']
+        group.dirs = {k: group_path / v for k, v in group.group_specs['folders'].items()}
         group.project_path = group.group_path.parent.parent
         group.subject_root = group.project_path / "Subjects" 
         group.subjects_log = group.group_specs['runtime']['subjects']
         
         #group.group_path = group.output_root / group.group_id
 
-        group.subjects = [
+        group.subjects = IndexedList([
             ExperimentSubject.from_existing(group.subject_root / s['spec']) for s in group.subjects_log
-        ]
+        ], id_attr='subject_id')
+
+        return group
+    
+    @classmethod
+    def from_subject_ids(cls, group_id: str, subject_ids: list, project_path: str | Path):
+        project_root = Path(project_path)
+        group = cls(group_specs = None)
+        group.group_id = group_id
+        group.project_path = project_root
+        group.project_name = project_root.name
+        group.subject_root = project_root / 'Subjects'
+        group.group_path = project_root / 'Groups' / group_id
+        group.group_path.mkdir(parents=True, exist_ok=True)
+
+        group.subjects = IndexedList(
+            [ExperimentSubject.from_existing(group.subject_root / sid) for sid in subject_ids],
+            id_attr='subject_id'
+        )
+        
+        group.group_specs = {
+            'group_id': group_id,
+            'project_name': group.project_name,
+            'runtime': {
+                'subjects': [{'spec': str(Path(sid))} for sid in subject_ids]
+            }
+        }
+
+        group._init_directory_structure()
+        group._save_group_specs()
 
         return group
     
@@ -114,26 +144,38 @@ class ExperimentGroup:
         save_yaml(self.group_specs, self.group_path / 'group_spec.yaml')
 
     def create_subjects_from_log(self):
-        self.subjects = []
+        self.subjects = IndexedList(id_attr='subject_id')#[]
         self.group_specs['runtime'] = {'subjects': []}
 
         for subj in self.subjects_log:
-            s = ExperimentSubject(subject_specs = subj['spec'], project_path = self.project_path, name = self.project_name)
+            s = ExperimentSubject(subject_specs = subj['spec'], project_path = self.project_path.parent, name = self.project_name)
             self.subjects.append(s)
             self.group_specs['runtime']['subjects'].append({'spec': str(s.subject_spec_path.relative_to(self.subject_root).parent)})
 
-    def process_subjects(self, method: str = 'sequential'):
+    def process(self, type: str, mode: str = 'skip', method: str = 'sequential'):
         if method == 'sequential':
             for subj in self.subjects:
-                subj.process_sessions()
+                subj.process(type, mode)
         elif method == 'parallel':
             for subject in self.subjects:
                 subject.par_process_sessions()
         else:
             raise ValueError("Incorrect method selected. Please use either 'sequential' for sequential processing, or 'parallel' for parallel processing.")
 
-    def add_subjects(self):
-        pass
+    def align(self, type: str, mode: str = "skip"):
+        for subj in self.subjects:
+            subj.align(type, mode)
+
+    def epoch(self, type: str, mode: str = "skip"):
+        for subj in self.subjects:
+            subj.epoch(type, mode)
+    
+    def add_subjects(self, subjects: dict):
+        for subj in subjects:
+            s = ExperimentSubject(subject_specs=subj['spec'], project_path = self.project_path.parent, name = self.project_name)
+            self.subjects.append(s)
+            self.group_specs['runtime']['subjects'].append({'spec': str(s.subject_spec_path.relative_to(self.subject_root).parent)})
+        self._save_group_specs()
 
     def summarize(self, type: str):
         """High-level function to make creating summaries easier.
