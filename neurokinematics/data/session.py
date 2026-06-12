@@ -51,7 +51,7 @@ from neurokinematics.decorators import log_call
 from neurokinematics.io import create_session_dirs
 
 # pose
-from neurokinematics.pose.preprocessing.base import process_sleap
+from neurokinematics.pose.preprocessing.base import process_sleap, extract_movement_features
 from neurokinematics.pose.io import load_df_list, load_pickle
 from neurokinematics.pose.plotting import plot_phase_offset_pairs
 
@@ -853,6 +853,41 @@ class ExperimentSession:
         )
 
     ### * extract features * ###
+    def extract_movement_features(self, pre_window_s: float | None = None):
+        """Re-extract movement events / features from the saved pose data.
+
+        Regenerates ``movement_events.pkl`` and ``movement_features.zarr`` from
+        the already-processed ``pose_data.csv`` without re-running pose cleaning.
+        Optionally overrides the pre-movement window (seconds of lead-in before
+        each detected onset); when given it is also persisted to the session's
+        pose config so it survives a reload.
+
+        Args:
+            pre_window_s (float | None, optional): Pre-movement lead-in in seconds.
+                ``None`` keeps the value already in the pose config. Defaults to None.
+        """
+        pose_csv = self.dirs['pose'] / 'pose_data.csv'
+        if not pose_csv.exists():
+            raise FileNotFoundError(
+                f"No processed pose data at {pose_csv}. Run process('pose') first."
+            )
+        cfg = getattr(self, 'pose_cfg', None)
+        if not cfg or 'movement_detection' not in cfg:
+            raise ValueError("No pose config with 'movement_detection' loaded for this session.")
+
+        movement_detection = deepcopy(cfg['movement_detection'])
+        if pre_window_s is not None:
+            movement_detection['pre_window_s'] = float(pre_window_s)
+            cfg['movement_detection']['pre_window_s'] = float(pre_window_s)  # persist
+            if hasattr(self, '_save_session_config'):
+                try:
+                    self._save_session_config()
+                except Exception as e:
+                    warnings.warn(f"pre_window_s not persisted to config: {e}")
+
+        ddf = pd.read_csv(pose_csv)
+        extract_movement_features(ddf, movement_detection, self.dirs['pose'])
+
     def bin_movements_and_spikes(self, bin_size: float = 0.02, return_data: bool = False):
 
         movement_dataset = self.dirs['pose'] / 'movement_features.zarr'

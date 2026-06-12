@@ -9,8 +9,8 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QListWidget, QCheckBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox,
-    QDialogButtonBox, QFileDialog, QMessageBox, QSizePolicy,
+    QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox,
+    QDialogButtonBox, QFileDialog, QMessageBox, QSizePolicy, QAbstractItemView,
     QComboBox, QTextEdit, QTabWidget, QWidget, QRadioButton
 )
 from PySide6.QtCore import Qt
@@ -979,6 +979,459 @@ class AnalysisDialog(QDialog):
             return
 
         self.result = (framework, model, data_file, params)
+        self.accept()
+
+
+# ── GLM encoder configuration ─────────────────────────────────────────────────
+
+# pose features the encoder can use, in the 'feature_coord' form create_glm_encoder parses
+_ENCODER_FEATURES = [
+    "velocity_x", "velocity_y", "speed",
+    "position_x", "position_y",
+    "acceleration_x", "acceleration_y",
+]
+
+
+def _discover_binned_stores(pose_dir, spikes_dir):
+    """Pair resampled-pose and spike-count zarr stores by their bin-size suffix.
+
+    Returns a dict ``{bin_ms: (pose_path, spike_path)}`` for bin sizes that have
+    *both* stores present, so the encoder always has matching X and y.
+    """
+    import re
+    pose_dir, spikes_dir = Path(pose_dir), Path(spikes_dir)
+
+    def _by_ms(folder, pattern):
+        out = {}
+        if folder.exists():
+            for p in folder.glob(pattern):
+                m = re.search(r"_(\d+)ms\.zarr$", p.name)
+                if m:
+                    out[int(m.group(1))] = p
+        return out
+
+    pose = _by_ms(pose_dir, "resampled_movements_*ms.zarr")
+    spk = _by_ms(spikes_dir, "movement_spike_counts_*ms.zarr")
+    return {ms: (pose[ms], spk[ms]) for ms in sorted(set(pose) & set(spk))}
+
+
+class EncoderDialog(QDialog):
+    """Configure and launch a GLM encoder (pose -> single-unit spiking).
+
+    Discovers the binned pose/spike zarr stores produced by
+    ``session.bin_movements_and_spikes`` and lets the user pick the reference
+    node, unit, pose features, an optional raised-cosine temporal basis (to
+    recover lead/lag), and a model-comparison mode. On accept,
+    ``self.result`` holds ``(pose_path, spike_path, params)``.
+    """
+
+    def __init__(self, session, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Fit GLM Encoder")
+        self.setMinimumWidth(520)
+        self.session = session
+        self.result = None
+        self._stores = _discover_binned_stores(
+            session.dirs.get("pose"), session.dirs.get("spikes"))
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # ── Binned data source ──
+        data_group = QGroupBox("Binned data")
+        data_form = QFormLayout(data_group)
+        self._bin_combo = QComboBox()
+        if self._stores:
+            self._bin_combo.addItems([f"{ms} ms" for ms in self._stores])
+        else:
+            self._bin_combo.addItem("(none — run Bin first)")
+            self._bin_combo.setEnabled(False)
+        self._bin_combo.currentIndexChanged.connect(self._on_bin_changed)
+        data_form.addRow("Bin size:", self._bin_combo)
+        self._pre_label = QLabel("—")
+        self._pre_label.setObjectName("subheading")
+        data_form.addRow("Pre-movement bins:", self._pre_label)
+        layout.addWidget(data_group)
+
+        # ── Target ──
+        target_group = QGroupBox("Target")
+        target_form = QFormLayout(target_group)
+        self._node_combo = QComboBox()
+        self._unit_combo = QComboBox()
+        target_form.addRow("Reference node:", self._node_combo)
+        target_form.addRow("Unit:", self._unit_combo)
+        layout.addWidget(target_group)
+
+        # ── Pose features ──
+        feat_group = QGroupBox("Pose features (predictors)")
+        feat_layout = QHBoxLayout(feat_group)
+        self._feat_checks = {}
+        col = QVBoxLayout()
+        for i, feat in enumerate(_ENCODER_FEATURES):
+            cb = QCheckBox(feat)
+            cb.setChecked(feat in ("velocity_x", "velocity_y"))
+            self._feat_checks[feat] = cb
+            col.addWidget(cb)
+            if (i + 1) % 4 == 0:
+                feat_layout.addLayout(col)
+                col = QVBoxLayout()
+        feat_layout.addLayout(col)
+        layout.addWidget(feat_group)
+
+        # ── Temporal basis (lags) ──
+        self._basis_group = QGroupBox("Temporal basis (recover lead/lag)")
+        self._basis_group.setCheckable(True)
+        self._basis_group.setChecked(True)
+        basis_form = QFormLayout(self._basis_group)
+
+        self._win_min = QDoubleSpinBox()
+        self._win_min.setRange(-2.0, 2.0)
+        self._win_min.setSingleStep(0.02)
+        self._win_min.setDecimals(3)
+        self._win_min.setValue(-0.10)
+        self._win_max = QDoubleSpinBox()
+        self._win_max.setRange(-2.0, 2.0)
+        self._win_max.setSingleStep(0.02)
+        self._win_max.setDecimals(3)
+        self._win_max.setValue(0.20)
+        win_row = QHBoxLayout()
+        win_row.addWidget(QLabel("from"))
+        win_row.addWidget(self._win_min)
+        win_row.addWidget(QLabel("to"))
+        win_row.addWidget(self._win_max)
+        win_row.addWidget(QLabel("s"))
+        win_widget = QWidget()
+        win_widget.setLayout(win_row)
+        basis_form.addRow("Window (rel. spike):", win_widget)
+
+        self._n_basis = QSpinBox()
+        self._n_basis.setRange(1, 15)
+        self._n_basis.setValue(5)
+        basis_form.addRow("# basis functions:", self._n_basis)
+
+        self._spacing_combo = QComboBox()
+        self._spacing_combo.addItems(["linear", "log"])
+        basis_form.addRow("Spacing:", self._spacing_combo)
+
+        hint = QLabel("Window > 0 = unit leads movement; < 0 = unit lags.")
+        hint.setObjectName("subheading")
+        basis_form.addRow(hint)
+        layout.addWidget(self._basis_group)
+
+        # ── Model ──
+        model_group = QGroupBox("Model")
+        model_form = QFormLayout(model_group)
+        self._family_combo = QComboBox()
+        self._family_combo.addItems(["Poisson", "Gaussian"])
+        model_form.addRow("Family:", self._family_combo)
+        self._mode_combo = QComboBox()
+        self._mode_combo.addItems(["full", "single", "single_and_full", "drop_one"])
+        model_form.addRow("Comparison:", self._mode_combo)
+        self._cv_spin = QSpinBox()
+        self._cv_spin.setRange(0, 20)
+        self._cv_spin.setValue(5)
+        self._cv_spin.setToolTip("Event-grouped cross-validation folds. 0 = in-sample fit.")
+        model_form.addRow("CV folds (0 = in-sample):", self._cv_spin)
+        layout.addWidget(model_group)
+
+        # ── Buttons ──
+        layout.addWidget(HDivider())
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Fit Encoder")
+        buttons.accepted.connect(self._confirm)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        if self._stores:
+            self._on_bin_changed(0)
+
+    def _current_paths(self):
+        if not self._stores:
+            return None, None
+        ms = list(self._stores.keys())[max(0, self._bin_combo.currentIndex())]
+        return self._stores[ms]
+
+    def _on_bin_changed(self, _idx):
+        """Populate node/unit combos from the selected stores' coordinates."""
+        pose_path, spike_path = self._current_paths()
+        if pose_path is None:
+            return
+        from neurokinematics.io import load_zarr
+        self._node_combo.clear()
+        self._unit_combo.clear()
+        try:
+            pose_ds = load_zarr(pose_path, method="xarray")
+            nodes = [str(n) for n in pose_ds.node.values]
+            self._node_combo.addItems(nodes)
+        except Exception:
+            self._node_combo.setEditable(True)
+        try:
+            import numpy as np
+            spike_ds = load_zarr(spike_path, method="xarray")
+            self._unit_combo.addItems([str(int(u)) for u in spike_ds.unit.values])
+            # surface whether this binned data carries pre-movement labelling
+            if 'pre_movement' in spike_ds:
+                pm = spike_ds['pre_movement'].values
+                val = spike_ds['valid'].values if 'valid' in spike_ds else np.ones_like(pm, bool)
+                if val.any() and pm[val].any():
+                    self._pre_label.setText(f"present ({100 * pm[val].mean():.0f}% of valid bins)")
+                else:
+                    self._pre_label.setText("none — re-Bin with a pre-movement window to add")
+            else:
+                self._pre_label.setText("none — re-Bin with a pre-movement window to add")
+        except Exception:
+            self._unit_combo.setEditable(True)
+            self._pre_label.setText("—")
+
+    def _confirm(self):
+        from neurokinematics.models.glm import build_encoder_params
+
+        pose_path, spike_path = self._current_paths()
+        if pose_path is None:
+            QMessageBox.warning(
+                self, "No binned data",
+                "No matching pose/spike zarr stores were found.\n"
+                "Run 'Bin' to generate them first.")
+            return
+
+        features = [f for f, cb in self._feat_checks.items() if cb.isChecked()]
+        if not features:
+            QMessageBox.warning(self, "No features",
+                                "Select at least one pose feature.")
+            return
+
+        if self._win_max.value() < self._win_min.value():
+            QMessageBox.warning(self, "Invalid window",
+                                "Window end must be ≥ window start.")
+            return
+
+        node = self._node_combo.currentText()
+        try:
+            unit = int(self._unit_combo.currentText())
+        except (ValueError, TypeError):
+            QMessageBox.warning(self, "No unit", "Select a valid unit.")
+            return
+
+        basis = None
+        if self._basis_group.isChecked():
+            basis = {
+                "window": (self._win_min.value(), self._win_max.value()),
+                "n_basis": self._n_basis.value(),
+                "spacing": self._spacing_combo.currentText(),
+            }
+
+        params = build_encoder_params(
+            node=node, unit=unit, features=features,
+            family=self._family_combo.currentText(),
+            mode=self._mode_combo.currentText(),
+            basis=basis,
+            n_splits=self._cv_spin.value(),
+        )
+        self.result = (pose_path, spike_path, params)
+        self.accept()
+
+
+class DecoderDialog(QDialog):
+    """Configure and launch a GLM decoder (population of units -> a movement feature).
+
+    Asks whether a set of units can reconstruct a kinematic target (speed,
+    position, velocity, ...) for a node. On accept, ``self.result`` holds
+    ``(pose_path, spike_path, params)``.
+    """
+
+    def __init__(self, session, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Fit GLM Decoder")
+        self.setMinimumWidth(520)
+        self.session = session
+        self.result = None
+        self._stores = _discover_binned_stores(
+            session.dirs.get("pose"), session.dirs.get("spikes"))
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # ── Binned data source ──
+        data_group = QGroupBox("Binned data")
+        data_form = QFormLayout(data_group)
+        self._bin_combo = QComboBox()
+        if self._stores:
+            self._bin_combo.addItems([f"{ms} ms" for ms in self._stores])
+        else:
+            self._bin_combo.addItem("(none — run Bin first)")
+            self._bin_combo.setEnabled(False)
+        self._bin_combo.currentIndexChanged.connect(self._on_bin_changed)
+        data_form.addRow("Bin size:", self._bin_combo)
+        layout.addWidget(data_group)
+
+        # ── Target ──
+        target_group = QGroupBox("Decode target")
+        target_form = QFormLayout(target_group)
+        self._node_combo = QComboBox()
+        target_form.addRow("Reference node:", self._node_combo)
+        self._target_combo = QComboBox()
+        self._target_combo.addItems(_ENCODER_FEATURES)   # speed / position_* / velocity_* / ...
+        target_form.addRow("Movement feature:", self._target_combo)
+        self._all_events = QCheckBox("Use all movement events (not just this node's)")
+        self._all_events.setChecked(True)
+        self._all_events.setToolTip("Decode this node's kinematics from every bout, "
+                                    "not only the ones it initiated — more training data.")
+        target_form.addRow("", self._all_events)
+        layout.addWidget(target_group)
+
+        # ── Population (units) ──
+        units_group = QGroupBox("Population (units)")
+        units_layout = QVBoxLayout(units_group)
+        self._units_list = QListWidget()
+        self._units_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self._units_list.setMaximumHeight(140)
+        hint = QLabel("Select the units to decode from (Ctrl/Shift for multiple; none = all).")
+        hint.setObjectName("subheading")
+        units_layout.addWidget(self._units_list)
+        units_layout.addWidget(hint)
+        layout.addWidget(units_group)
+
+        # ── Spike history (lags) — the key to decoding well ──
+        self._lag_group = QGroupBox("Spike history (population lags)")
+        self._lag_group.setCheckable(True)
+        self._lag_group.setChecked(True)
+        lag_form = QFormLayout(self._lag_group)
+        self._lag_min = QDoubleSpinBox()
+        self._lag_min.setRange(-1.0, 1.0); self._lag_min.setSingleStep(0.02)
+        self._lag_min.setDecimals(3); self._lag_min.setValue(-0.15)
+        self._lag_max = QDoubleSpinBox()
+        self._lag_max.setRange(-1.0, 1.0); self._lag_max.setSingleStep(0.02)
+        self._lag_max.setDecimals(3); self._lag_max.setValue(0.15)
+        lrow = QHBoxLayout()
+        lrow.addWidget(QLabel("from")); lrow.addWidget(self._lag_min)
+        lrow.addWidget(QLabel("to")); lrow.addWidget(self._lag_max); lrow.addWidget(QLabel("s"))
+        lw = QWidget(); lw.setLayout(lrow)
+        lag_form.addRow("Window (rel. kinematic):", lw)
+        self._lag_nbasis = QSpinBox()
+        self._lag_nbasis.setRange(1, 15); self._lag_nbasis.setValue(5)
+        lag_form.addRow("# basis functions:", self._lag_nbasis)
+        lhint = QLabel("Spans spikes before & after each moment; off = same-bin only (usually decodes poorly).")
+        lhint.setObjectName("subheading"); lhint.setWordWrap(True)
+        lag_form.addRow(lhint)
+        layout.addWidget(self._lag_group)
+
+        # ── Model ──
+        model_group = QGroupBox("Model")
+        model_form = QFormLayout(model_group)
+        self._family_combo = QComboBox()
+        self._family_combo.addItems(["Gaussian", "Poisson"])
+        model_form.addRow("Family:", self._family_combo)
+        self._smooth_spin = QDoubleSpinBox()
+        self._smooth_spin.setRange(0.0, 1.0); self._smooth_spin.setDecimals(3)
+        self._smooth_spin.setSingleStep(0.01); self._smooth_spin.setValue(0.05)
+        self._smooth_spin.setToolTip("Gaussian σ (s) smoothing spikes into firing rates "
+                                     "before lagging. 0 = raw counts. Denoising usually helps.")
+        model_form.addRow("Rate smoothing σ (s):", self._smooth_spin)
+        self._alpha_spin = QDoubleSpinBox()
+        self._alpha_spin.setRange(0.0, 10000.0); self._alpha_spin.setDecimals(2)
+        self._alpha_spin.setSingleStep(1.0); self._alpha_spin.setValue(1.0)
+        self._alpha_spin.setToolTip("L2 (ridge) penalty. 0 = ordinary least squares. "
+                                    "Higher = more shrinkage; helps with many units/lags.")
+        model_form.addRow("Ridge α (0 = none):", self._alpha_spin)
+        self._cv_spin = QSpinBox()
+        self._cv_spin.setRange(0, 20)
+        self._cv_spin.setValue(5)
+        self._cv_spin.setToolTip("Event-grouped cross-validation folds. 0 = in-sample fit.")
+        model_form.addRow("CV folds (0 = in-sample):", self._cv_spin)
+        self._shuffle_spin = QSpinBox()
+        self._shuffle_spin.setRange(0, 1000); self._shuffle_spin.setValue(0)
+        self._shuffle_spin.setToolTip("Trial-shuffle permutation null → a p-value for the "
+                                      "CV R². 0 = off; 100–200 typical. Slower (re-runs CV).")
+        model_form.addRow("Shuffle null (0 = off):", self._shuffle_spin)
+        layout.addWidget(model_group)
+
+        layout.addWidget(HDivider())
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Fit Decoder")
+        buttons.accepted.connect(self._confirm)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        if self._stores:
+            self._on_bin_changed(0)
+
+    def _current_paths(self):
+        if not self._stores:
+            return None, None
+        ms = list(self._stores.keys())[max(0, self._bin_combo.currentIndex())]
+        return self._stores[ms]
+
+    def _on_bin_changed(self, _idx):
+        pose_path, spike_path = self._current_paths()
+        if pose_path is None:
+            return
+        from neurokinematics.io import load_zarr
+        self._node_combo.clear()
+        self._units_list.clear()
+        try:
+            pose_ds = load_zarr(pose_path, method="xarray")
+            self._node_combo.addItems([str(n) for n in pose_ds.node.values])
+        except Exception:
+            self._node_combo.setEditable(True)
+        try:
+            spike_ds = load_zarr(spike_path, method="xarray")
+            for u in spike_ds.unit.values:
+                self._units_list.addItem(str(int(u)))
+        except Exception:
+            pass
+
+    def _selected_units(self):
+        sel = [int(i.text()) for i in self._units_list.selectedItems()]
+        if sel:
+            return sel
+        # none selected -> use the whole population
+        return [int(self._units_list.item(i).text()) for i in range(self._units_list.count())]
+
+    def _confirm(self):
+        from neurokinematics.models.glm import build_decoder_params
+
+        pose_path, spike_path = self._current_paths()
+        if pose_path is None:
+            QMessageBox.warning(self, "No binned data",
+                                "No matching pose/spike zarr stores were found.\n"
+                                "Run 'Bin' to generate them first.")
+            return
+        units = self._selected_units()
+        if not units:
+            QMessageBox.warning(self, "No units", "No units available to decode from.")
+            return
+
+        if self._lag_group.isChecked() and self._lag_max.value() < self._lag_min.value():
+            QMessageBox.warning(self, "Invalid window",
+                                "Spike-history window end must be ≥ start.")
+            return
+
+        lag = None
+        if self._lag_group.isChecked():
+            lag = {
+                "window": (self._lag_min.value(), self._lag_max.value()),
+                "n_basis": self._lag_nbasis.value(),
+            }
+
+        params = build_decoder_params(
+            node=self._node_combo.currentText(),
+            units=units,
+            target=self._target_combo.currentText(),
+            family=self._family_combo.currentText(),
+            n_splits=self._cv_spin.value(),
+            lag=lag,
+            alpha=self._alpha_spin.value(),
+            smoothing_s=self._smooth_spin.value(),
+            all_events=self._all_events.isChecked(),
+            n_shuffle=self._shuffle_spin.value(),
+        )
+        self.result = (pose_path, spike_path, params)
         self.accept()
 
 

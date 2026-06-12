@@ -19,8 +19,7 @@ from neurokinematics.io import save_dataframe
 from neurokinematics.ephys.io import *
 from neurokinematics.ephys.utils import create_probe
 
-def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None,
-         bad_channels: list | None = None):
+def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None): 
     """Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe.
     Consequently, this has only been tested with the default parameters. More tests are required for other recording setups.
 
@@ -55,8 +54,6 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None,
     stream_name = sorting_cfg['stream_name']
     to_compute = sorting_cfg['to_compute']
     quality_metrics = sorting_cfg['quality_metrics']
-    # optional pre-sort pipeline — absent in most configs (kilosort filters
-    # internally), so default to None rather than KeyError.
     preprocessing_steps = sorting_cfg.get('preprocess', None)
     
     data_path = Path(data_path) # windows path
@@ -68,20 +65,11 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None,
     qual_metrics_path = save_path / 'spike_qc_metrics.csv'
 
     recording = read_data(data_path=Path(data_path), rec_type=rec_type, stream_name=stream_name)
-    probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
-    recording = recording.set_probe(probe, group_mode=group_mode) # sets probe
-
-    # drop QC/user-selected bad channels before sorting (kilosort filters
-    # internally, so we remove them from the raw recording)
-    if bad_channels:
-        bad_set = {str(b) for b in bad_channels}
-        to_remove = [c for c in recording.get_channel_ids() if str(c) in bad_set]
-        if to_remove:
-            recording = recording.remove_channels(to_remove)
-
-    # optional pre-sort preprocessing pipeline (only if the config defines one)
+    if probe_id.lower() != 'neuropixels':
+        probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
+        recording = recording.set_probe(probe, group_mode=group_mode) # sets probe
     if preprocessing_steps:
-        recording = preprocess(recording, preprocessing_steps)
+        recording = preprocess_ephys(recording, preprocessing_steps)
 
     # Run spikesorting
     sorting = run_sorter(sorter_name=sorter, recording=recording, folder=output_folder)
@@ -129,7 +117,7 @@ def sorting_analyzer(sorting, recording, data_path, compute_dict: dict, quality_
     metrics = compute_quality_metrics(analyzer, metric_names = quality_metrics)
     return analyzer, metrics
 
-def preprocess(recording, preprocessing_dict):
+def preprocess_ephys(recording, preprocessing_dict):
 
     preprocessed_recording = apply_preprocessing_pipeline(recording, preprocessing_dict)
 

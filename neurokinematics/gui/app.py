@@ -926,6 +926,9 @@ class SessionPanel(DetailPanel):
                                   actions=actions, fn_map=fn_map))
         self._layout.addWidget(epoch_section)
 
+        # ── Modeling section (bin features, fit GLM encoder) ──
+        self._layout.addWidget(self._build_modeling_section())
+
         # ── Quality Control section ──
         self._layout.addWidget(make_qc_section(self._run_qc, self._view_past_qc))
 
@@ -990,6 +993,114 @@ class SessionPanel(DetailPanel):
             self._layout.addWidget(cfg_section)
 
         self._layout.addStretch()
+
+    # ── Modeling (binned features + GLM encoder) ───────────────────────────────
+    def _build_modeling_section(self):
+        """Section to bin pose/spikes and fit a GLM encoder on the result."""
+        from neurokinematics.gui.widgets import CollapsibleSection
+        dirs = getattr(self.session, 'dirs', {})
+        section = CollapsibleSection("Modeling", expanded=True)
+
+        spikes_dir = dirs.get('spikes')
+        binned = bool(spikes_dir and Path(spikes_dir).exists()
+                      and list(Path(spikes_dir).glob('movement_spike_counts_*ms.zarr')))
+        section.add_widget(self._make_op_row(
+            label="Binned", done=binned,
+            actions=["Bin"], fn_map={"Bin": self._run_bin}))
+
+        models_dir = dirs.get('models')
+        glm_dir = Path(models_dir) / 'glm' if models_dir else None
+        enc_done = bool(glm_dir and (glm_dir / 'encoder').exists())
+        dec_done = bool(glm_dir and (glm_dir / 'decoder').exists())
+        section.add_widget(self._make_op_row(
+            label="Encoder", done=enc_done,
+            actions=["Fit"], fn_map={"Fit": self._open_encoder_dialog}))
+        section.add_widget(self._make_op_row(
+            label="Decoder", done=dec_done,
+            actions=["Fit"], fn_map={"Fit": self._open_decoder_dialog}))
+        return section
+
+    def _current_pre_window(self) -> float:
+        """Pre-movement window (s) currently set in the session's pose config."""
+        cfg = getattr(self.session, 'pose_cfg', None) or {}
+        md  = cfg.get('movement_detection') or {}
+        try:
+            return float(md.get('pre_window_s', 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _run_bin(self):
+        """Bin pose + spikes into matching zarr stores (encoder inputs).
+
+        Also exposes the pre-movement window: changing it re-extracts the movement
+        features (so pre-onset bins are captured) before binning.
+        """
+        bin_ms, ok = QInputDialog.getDouble(
+            self, "Bin size", "Bin size (ms):", 20.0, 1.0, 1000.0, 1)
+        if not ok:
+            return
+        current_pre = self._current_pre_window()
+        pre_s, ok = QInputDialog.getDouble(
+            self, "Pre-movement window",
+            "Pre-movement lead-in (s)\n0 = onset→end;  >0 re-extracts movement events:",
+            current_pre, 0.0, 5.0, 2)
+        if not ok:
+            return
+
+        bin_size = bin_ms / 1000.0
+        pre_s    = float(pre_s)
+        reextract = abs(pre_s - current_pre) > 1e-9
+
+        if reextract:
+            self.log.log(
+                f"Re-extracting movements (pre_window_s={pre_s}) then "
+                f"binning (bin_size={bin_size})…", 'info')
+        else:
+            self.log.log(f"session.bin_movements_and_spikes(bin_size={bin_size})…", 'info')
+
+        def _bin():
+            if reextract:
+                self.session.extract_movement_features(pre_window_s=pre_s)
+            self.session.bin_movements_and_spikes(bin_size)
+
+        self._run_in_thread(_bin, self.log)
+
+    def _open_encoder_dialog(self):
+        """Configure and run a GLM encoder on the binned data."""
+        from neurokinematics.gui.dialogs import EncoderDialog
+        from neurokinematics.models.glm import compare_glm_models
+
+        dlg = EncoderDialog(self.session, parent=self)
+        if dlg.exec() != EncoderDialog.Accepted or dlg.result is None:
+            return
+        pose_path, spike_path, params = dlg.result
+        save_path = getattr(self.session, 'dirs', {}).get('models')
+        self.log.log(
+            f"Fitting GLM encoder: node={params['pose']['node']} "
+            f"unit={params['spikes']['unit']} "
+            f"features={params['pose']['features']} "
+            f"basis={'on' if params['pose'].get('basis') else 'off'}…", 'info')
+        self._run_in_thread(
+            lambda: compare_glm_models(pose_path, spike_path, params, save_path),
+            self.log)
+
+    def _open_decoder_dialog(self):
+        """Configure and run a GLM decoder (population of units -> movement feature)."""
+        from neurokinematics.gui.dialogs import DecoderDialog
+        from neurokinematics.models.glm import create_glm_decoder
+
+        dlg = DecoderDialog(self.session, parent=self)
+        if dlg.exec() != DecoderDialog.Accepted or dlg.result is None:
+            return
+        pose_path, spike_path, params = dlg.result
+        save_path = getattr(self.session, 'dirs', {}).get('models')
+        self.log.log(
+            f"Fitting GLM decoder: {len(params['spikes']['unit'])} unit(s) "
+            f"→ {params['pose']['node']} {params['pose']['features'][0]} "
+            f"(cv={'on' if params.get('cv') else 'off'})…", 'info')
+        self._run_in_thread(
+            lambda: create_glm_decoder(pose_path, spike_path, params, save_path),
+            self.log)
 
     def _run_qc(self):
         """Run QC for this session and show the report in a dock."""
@@ -1235,7 +1346,7 @@ class SessionPanel(DetailPanel):
                   lambda mode: self.session.process('pose', mode))('overwrite')
 
     # actions that don't need a mode selector
-    _NO_MODE_ACTIONS = {"Inspect", "View", "Quality"}
+    _NO_MODE_ACTIONS = {"Inspect", "View", "Quality", "Bin", "Fit"}
 
     def _make_op_row(self, label: str, done: bool, actions: list, fn_map: dict) -> QWidget:
         """

@@ -10,7 +10,8 @@ from tqdm import tqdm
 from scipy.optimize import minimize
 from scipy.special import gammaln  # log gamma for log(y!)
 from scipy.signal import decimate, savgol_filter
-from sklearn.model_selection import KFold  # optional: requires scikit-learn; if unavailable, use custom CV
+from scipy.ndimage import gaussian_filter1d
+from sklearn.model_selection import KFold, GroupKFold  # event-grouped CV uses GroupKFold
 from scipy import __version__ as scipy_version
 
 from sklearn.preprocessing import StandardScaler
@@ -22,7 +23,183 @@ from statsmodels import __version__ as sm_version
 import xarray as xr
 
 from neurokinematics.io import load_zarr, save_model, save_yaml, save_dataset, save_dataframe
+from neurokinematics.models.basis import (
+    offsets_from_window, raised_cosine_basis, lagged_feature_design,
+)
 from neurokinematics import __version__ as nk_version
+
+
+def glm_cv_scores(y, pred, family: str):
+    """Held-out goodness-of-fit for a GLM, family-appropriate.
+
+    Args:
+        y (np.ndarray): Observed responses (held-out).
+        pred (np.ndarray): Out-of-sample predictions, same length as ``y``.
+        family (str): statsmodels family name (e.g. ``'Poisson'``, ``'Gaussian'``).
+
+    Returns:
+        dict: ``cv_corr`` (Pearson r between observed and predicted) and
+        ``cv_r2`` — ordinary R² for Gaussian, deviance-based McFadden-style
+        pseudo-R² (``1 - D_model/D_null``) for count families. ``cv_deviance``
+        is also included for count families.
+    """
+    y = np.asarray(y, dtype=float)
+    pred = np.asarray(pred, dtype=float)
+    m = np.isfinite(y) & np.isfinite(pred)
+    y, pred = y[m], pred[m]
+
+    out = {}
+    if y.size > 1 and np.std(y) > 0 and np.std(pred) > 0:
+        out['cv_corr'] = float(np.corrcoef(y, pred)[0, 1])
+    else:
+        out['cv_corr'] = float('nan')
+
+    if (family or '').lower() == 'gaussian':
+        ss_res = float(np.sum((y - pred) ** 2))
+        ss_tot = float(np.sum((y - y.mean()) ** 2))
+        out['cv_r2'] = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else float('nan')
+    else:
+        # Poisson deviance pseudo-R² against an intercept-only (mean-rate) null
+        eps = 1e-9
+        mu = np.clip(pred, eps, None)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            term = np.where(y > 0, y * np.log(y / mu), 0.0)
+        d_model = 2.0 * float(np.sum(term - (y - mu)))
+        mu0 = max(y.mean(), eps)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            term0 = np.where(y > 0, y * np.log(y / mu0), 0.0)
+        d_null = 2.0 * float(np.sum(term0 - (y - mu0)))
+        out['cv_deviance'] = d_model
+        out['cv_r2'] = float(1.0 - d_model / d_null) if d_null > 0 else float('nan')
+    return out
+
+
+def _fit_linear_model(y, X, family: str, alpha: float = 0.0):
+    """Fit a GLM, optionally with L2 (ridge) regularization.
+
+    Returns an object exposing ``.predict(X)`` for both paths:
+    * ``alpha == 0`` → ``statsmodels`` GLM (unchanged behaviour; also exposes
+      ``.aic`` / ``.llf``).
+    * ``alpha > 0``  → an L2-penalized scikit-learn estimator (``Ridge`` for
+      Gaussian, ``PoissonRegressor`` otherwise). The intercept is fit unpenalized
+      (``fit_intercept=True``); the constant column already present in ``X`` is
+      mean-centred away and contributes nothing.
+    """
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if alpha and alpha > 0:
+        if str(family).lower() == 'gaussian':
+            from sklearn.linear_model import Ridge
+            est = Ridge(alpha=float(alpha), fit_intercept=True)
+        else:
+            from sklearn.linear_model import PoissonRegressor
+            est = PoissonRegressor(alpha=float(alpha), fit_intercept=True, max_iter=500)
+        est.fit(X, y)
+        return est
+    return sm.GLM(y, X, family=getattr(sm.families, family)()).fit()
+
+
+def crossval_glm_predictions(X_model, y, family: str, groups, n_splits: int = 5, alpha: float = 0.0):
+    """Event-grouped K-fold out-of-sample GLM predictions.
+
+    Splits by ``groups`` (movement-event id) with :class:`sklearn.model_selection.GroupKFold`
+    so whole events are held out together — a bout is never split across
+    train/test. Every row is predicted exactly once (from the fold in which its
+    event was the test set), so the returned array aligns 1:1 with the input rows.
+
+    Args:
+        X_model (pd.DataFrame | np.ndarray): Design matrix including the constant.
+        y (np.ndarray): Response, shape ``(n_rows,)``.
+        family (str): statsmodels family name.
+        groups (np.ndarray): Per-row event id used for grouping.
+        n_splits (int): Requested folds; clamped to ``[2, n_unique_groups]``.
+
+    Returns:
+        tuple: ``(oos_pred, metrics)`` — held-out predictions (``np.nan`` for any
+        fold that failed to converge) and the :func:`glm_cv_scores` dict, with
+        ``n_splits`` / ``n_groups`` added.
+    """
+    X_arr = np.asarray(X_model, dtype=float)
+    y = np.asarray(y, dtype=float)
+    groups = np.asarray(groups)
+
+    n_groups = int(len(np.unique(groups)))
+    n_splits = int(max(2, min(n_splits, n_groups)))
+
+    oos = np.full(y.shape, np.nan, dtype=float)
+    gkf = GroupKFold(n_splits=n_splits)
+    for train_idx, test_idx in gkf.split(X_arr, y, groups):
+        try:
+            est = _fit_linear_model(y[train_idx], X_arr[train_idx], family, alpha=alpha)
+            oos[test_idx] = est.predict(X_arr[test_idx])
+        except Exception:
+            # leave NaN for this fold's rows; scoring ignores non-finite entries
+            continue
+
+    metrics = glm_cv_scores(y, oos, family)
+    metrics['n_splits'] = n_splits
+    metrics['n_groups'] = n_groups
+    return oos, metrics
+
+
+def _apply_cv(params, X_model, y, family, groups, insample_pred, alpha: float = 0.0):
+    """Run event-grouped CV when ``params['cv']`` requests folds.
+
+    Returns the prediction to report — held-out predictions when CV ran, the
+    in-sample prediction otherwise — and records CV metrics on ``params['metrics']``.
+    ``alpha`` carries the same L2 penalty used for the full fit into each fold.
+    """
+    cv_cfg = params.get('cv') or {}
+    n_splits = int(cv_cfg.get('n_splits', 0) or 0) if isinstance(cv_cfg, dict) else int(cv_cfg or 0)
+    n_groups = int(len(np.unique(groups)))
+
+    metrics = params.setdefault('metrics', {})
+    if n_splits >= 2 and n_groups >= 2:
+        oos, cv_metrics = crossval_glm_predictions(X_model, y, family, groups, n_splits=n_splits, alpha=alpha)
+        metrics.update(cv_metrics)
+        metrics['cross_validated'] = True
+        return oos
+    metrics['cross_validated'] = False
+    return insample_pred
+
+
+def _circular_shift_within_groups(y, groups, rng):
+    """Circularly roll the target within each event by a random non-zero offset.
+
+    Breaks the temporal correspondence between spikes and the kinematic while
+    preserving each event's marginal distribution and autocorrelation — the basis
+    of the trial-shuffle permutation null.
+    """
+    y = np.asarray(y, dtype=float).copy()
+    for g in np.unique(groups):
+        idx = np.where(groups == g)[0]
+        if idx.size > 1:
+            y[idx] = np.roll(y[idx], int(rng.integers(1, idx.size)))
+    return y
+
+
+def shuffle_null_cv_r2(X_model, y, family, groups, n_splits, alpha, real_r2,
+                       n_shuffle: int = 100, seed: int = 0):
+    """One-sided permutation test for a cross-validated decoder.
+
+    Re-runs event-grouped CV ``n_shuffle`` times with the target circularly
+    shifted within each event, building a null distribution of CV R². Returns
+    ``(p_value, null_mean)`` where ``p = (#{null >= real} + 1) / (n + 1)``.
+    """
+    rng = np.random.default_rng(seed)
+    null = []
+    for _ in range(int(n_shuffle)):
+        y_sh = _circular_shift_within_groups(y, groups, rng)
+        _, m = crossval_glm_predictions(X_model, y_sh, family, groups,
+                                        n_splits=n_splits, alpha=alpha)
+        r2 = m.get('cv_r2')
+        if r2 is not None and np.isfinite(r2):
+            null.append(r2)
+    if not null:
+        return float('nan'), float('nan')
+    null = np.asarray(null)
+    p = (int(np.sum(null >= real_r2)) + 1) / (null.size + 1)
+    return float(p), float(null.mean())
 
 
 def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | xr.Dataset, params: dict | None = None, save_path: str | Path | None = None):
@@ -41,6 +218,22 @@ def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
                     },
                     'unit': int
                 }
+            To model how spiking depends on a movement feature across a range of
+            temporal offsets (so a unit's lead/lag relative to movement can be
+            recovered), supply an optional raised-cosine temporal basis under
+            ``params['pose']['basis']``::
+
+                'basis': {
+                    'window': (-0.1, 0.2),  # (start_s, end_s) of the kinematic
+                                            # sample relative to the spike bin;
+                                            # >0 = future (unit leads movement),
+                                            # <0 = past (unit lags movement)
+                    'n_basis': 5,           # number of raised-cosine bumps
+                    'spacing': 'linear',    # 'linear' or 'log'
+                }
+
+            When omitted, each feature enters the design at zero lag (same-bin),
+            i.e. the original instantaneous behaviour.
         Defaults to None.
 
     Raises:
@@ -80,6 +273,7 @@ def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
     family = params.get("family", 'Poisson')
     glm_type = params.get("type", 'encoder')  #glm_params['type']
     pose_feature = params.get("pose", {}).get('features', ['position_y']) #glm_params['features']['pose']
+    basis_cfg = params.get("pose", {}).get('basis', None)
     spike_feature = params.get("spikes", {}).get('features', 'spike_counts') #glm_params['features']['spikes']
     spike_feature = spike_feature[0] # this will be a list - but should only contain one entry
     unit = params.get("spikes", {}).get('unit', 0)[0] # this will be a list - but should only contain one entry
@@ -117,8 +311,33 @@ def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
         else:
             predictors[feat_name] = feat_
             features.append(feat_name)
-    
-    X = pd.DataFrame({name: predictors[name].values.reshape(-1) for name in features})
+
+    if basis_cfg:
+        # Expand each feature onto a raised-cosine temporal basis so the GLM can
+        # learn a temporal filter (and thus the unit's lead/lag) rather than a
+        # single same-bin coefficient.
+        bin_size = float(np.median(np.diff(time_bins)))
+        offsets = offsets_from_window(basis_cfg.get('window', (0.0, 0.0)), bin_size)
+        basis = raised_cosine_basis(
+            offsets,
+            n_basis = basis_cfg.get('n_basis', 5),
+            spacing = basis_cfg.get('spacing', 'linear'),
+            overlap = basis_cfg.get('overlap', 2.0),
+        )
+        cols = {}
+        for name in features:
+            design = lagged_feature_design(predictors[name].values, offsets, basis)
+            for k in range(design.shape[2]):
+                cols[f"{name}__b{k}"] = design[:, :, k].reshape(-1)
+        X = pd.DataFrame(cols)
+        attrs['basis'] = {
+            'window': list(basis_cfg.get('window', (0.0, 0.0))),
+            'n_basis': int(basis.shape[1]),
+            'spacing': basis_cfg.get('spacing', 'linear'),
+            'offsets': offsets.tolist(),
+        }
+    else:
+        X = pd.DataFrame({name: predictors[name].values.reshape(-1) for name in features})
 
     spikes = spike_sub[spike_feature].sel(unit=unit)#.isel(time_bin=slice(1, None))
     n_events, n_bins = spikes.shape
@@ -149,17 +368,20 @@ def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
 
     results = model.fit()
 
-    predicted = results.predict(X_model)
+    insample_pred = results.predict(X_model)
 
     params['packages'] = {'statsmodels': sm_version, 'scipy': scipy_version, 'sklearn': sk_version, 'neurokinematics': nk_version}
     params['metrics'] = {'aic': float(results.aic), 'log_likelihood': float(results.llf)}
 
+    # event-grouped cross-validation (held-out predictions) when params['cv'] is set
+    predicted = _apply_cv(params, X_model, sy, family, event_idx, insample_pred)
+
     outputs = {
-        'predicted': predicted, 
-        'observed': sy, 
-        'event_idx': event_idx, 
-        'time_idx': time_idx, 
-        'time_bins':time_bins, 
+        'predicted': predicted,
+        'observed': sy,
+        'event_idx': event_idx,
+        'time_idx': time_idx,
+        'time_bins':time_bins,
         'attrs': attrs,
         'params': params
         }
@@ -169,7 +391,7 @@ def create_glm_encoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
         created_on = datetime.now().strftime('%Y%m%d_%H_%M_%S') # get creation date
         save_path = save_path / 'glm' / glm_type / f'{node}_to_unit_{unit}_{created_on}'
         save_glm_results(model, results, outputs, params, save_path)
-        
+
 
     return model, results, outputs
 
@@ -226,9 +448,14 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
     params['input_data'] = {'pose_dataset': pose_ds_str, 'spike_dataset': spike_ds_str}
     node = params.get("pose", {}).get("node", pose_ds.node.values[0]) #glm_params['node']
     family = params.get("family", 'Gaussian') # set gaussian by default for decoding
-    glm_type = params.get("type", 'encoder')  #glm_params['type']
-    pose_feature = params.get("pose", {}).get('features', ['position_y'])[0] #glm_params['features']['pose']
-    pose_feature, pose_coord = pose_feature.split('_')
+    glm_type = params.get("type", 'decoder')  #glm_params['type']
+    target = params.get("pose", {}).get('features', ['position_y'])[0] #glm_params['features']['pose']
+    # directional targets are 'feature_coord' (e.g. 'velocity_y'); scalars like
+    # 'speed' have no coord component
+    if '_' in target:
+        pose_feature, pose_coord = target.split('_', 1)
+    else:
+        pose_feature, pose_coord = target, None
     spike_feature = params.get("spikes", {}).get('features', 'spike_counts') #glm_params['features']['spikes']
     spike_feature = spike_feature[0] # this will be a list - but should only contain one entry
     units = params.get("spikes", {}).get('unit', 0) # this will be a list - but should only contain one entry
@@ -238,30 +465,74 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
         "model_type": glm_type,
         "unit": units,
         "node": node,
+        "target": target,
         "features": {
             'pose': pose_feature,
             'spikes': spike_feature
         }
     }
 
-    mask = (pose_ds.reference_node == node).compute()
-    pose_sub = pose_ds.where(mask, drop=True)
-    spike_sub = spike_ds.where(mask, drop=True)
+    all_events = bool(params.get("pose", {}).get('all_events', False))
+    if all_events:
+        # decode this node's kinematics from *every* movement bout, not only the
+        # bouts it initiated — more (and more varied) training data
+        pose_sub, spike_sub = pose_ds, spike_ds
+    else:
+        mask = (pose_ds.reference_node == node).compute()
+        pose_sub = pose_ds.where(mask, drop=True)
+        spike_sub = spike_ds.where(mask, drop=True)
 
-    # pose feature
-    #pos = pose_sub.position.sel(node=node)
+    # population predictors (one column per unit, or per unit × lag-basis)
     predictors = dict()
     features = []
-    for i, uid in enumerate(units):
-        feat_ = spike_sub[spike_feature].isel(unit=uid)
-        features.append(f"unit_{uid}")
-        predictors[f"unit_{uid}"] = feat_
-        if i == 0:
-            n_events, n_bins = feat_.shape
-    X = pd.DataFrame({name: predictors[name].values.reshape(-1) for name in features})
+    spike_basis = params.get("spikes", {}).get('basis', None)
+    bin_size = float(np.median(np.diff(time_bins)))
 
-    #spikes = spike_sub[spike_feature].sel(unit=unit)#.isel(time_bin=slice(1, None))
-    #n_events, n_bins = spikes.shape
+    # optional Gaussian smoothing of each unit's binned spikes -> firing rate.
+    # Raw counts at small bins are 0/1-sparse and very noisy; smoothing denoises
+    # the predictors and usually improves decoding a lot.
+    smoothing_s = float(params.get("spikes", {}).get('smoothing_s', 0.0) or 0.0)
+    sigma_bins = (smoothing_s / bin_size) if smoothing_s > 0 else 0.0
+
+    def _unit_series(uid):
+        arr = spike_sub[spike_feature].isel(unit=uid).values.astype(float)  # (event, bins)
+        if sigma_bins > 0:
+            # smooth within each event (axis=1); 'constant' avoids cross-event bleed
+            arr = gaussian_filter1d(arr, sigma=sigma_bins, axis=1, mode='constant')
+        return arr
+
+    n_events, n_bins = spike_sub[spike_feature].isel(unit=units[0]).shape
+
+    if spike_basis:
+        offsets = offsets_from_window(spike_basis.get('window', (0.0, 0.0)), bin_size)
+        basis = raised_cosine_basis(
+            offsets,
+            n_basis=spike_basis.get('n_basis', 5),
+            spacing=spike_basis.get('spacing', 'linear'),
+        )
+        cols = {}
+        for uid in units:
+            design = lagged_feature_design(_unit_series(uid), offsets, basis)
+            for k in range(design.shape[2]):
+                name = f"unit_{uid}__b{k}"
+                cols[name] = design[:, :, k].reshape(-1)
+                features.append(name)
+        X = pd.DataFrame(cols)
+        attrs['spike_basis'] = {
+            'window': list(spike_basis.get('window', (0.0, 0.0))),
+            'n_basis': int(basis.shape[1]),
+            'spacing': spike_basis.get('spacing', 'linear'),
+            'offsets': offsets.tolist(),
+        }
+    else:
+        for uid in units:
+            name = f"unit_{uid}"
+            predictors[name] = _unit_series(uid)
+            features.append(name)
+        X = pd.DataFrame({name: predictors[name].reshape(-1) for name in features})
+
+    attrs['all_events'] = all_events
+    attrs['smoothing_s'] = smoothing_s
 
     event_idx = np.repeat(np.arange(n_events), n_bins)
     time_idx = np.tile(np.arange(n_bins), n_events)
@@ -271,7 +542,10 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
         spike_sub.valid.fillna(False).astype(bool)#.isel(time_bin = slice(1, None))
     )
 
-    sy = pose_sub[pose_feature].sel(node=node).sel(coord=pose_coord).values.reshape(-1)#spikes.values.reshape(-1)
+    target_da = pose_sub[pose_feature].sel(node=node)
+    if pose_coord is not None:
+        target_da = target_da.sel(coord=pose_coord)
+    sy = target_da.values.reshape(-1)
 
     valid_flat = valid.values.reshape(-1)
     finite = np.isfinite(X).all(axis=1) & np.isfinite(sy)
@@ -285,21 +559,42 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(scaler.fit_transform(X), columns = X.columns, index = X.index)
     X_model = sm.add_constant(X_scaled, has_constant="add")
-    model = sm.GLM(sy, X_model, family=getattr(sm.families, family)())
 
-    results = model.fit()
+    # optional L2 (ridge) regularization — important once spike-history lags make
+    # the design wide and collinear
+    reg = params.get('regularization') or {}
+    alpha = float(reg.get('alpha', 0.0) or 0.0) if isinstance(reg, dict) else float(reg or 0.0)
 
-    predicted = results.predict(X_model)
+    fitted = _fit_linear_model(sy, X_model, family, alpha=alpha)
+    model = results = fitted
+    insample_pred = np.asarray(fitted.predict(X_model))
 
     params['packages'] = {'statsmodels': sm_version, 'scipy': scipy_version, 'sklearn': sk_version, 'neurokinematics': nk_version}
-    params['metrics'] = {'aic': float(results.aic), 'log_likelihood': float(results.llf)}
+    params['metrics'] = {} if alpha > 0 else {'aic': float(results.aic), 'log_likelihood': float(results.llf)}
+    if alpha > 0:
+        params['metrics']['regularization_alpha'] = alpha
+
+    # event-grouped cross-validation (held-out predictions) when params['cv'] is set
+    predicted = _apply_cv(params, X_model, sy, family, event_idx, insample_pred, alpha=alpha)
+
+    # optional permutation null: is the CV R² above chance? (trial-shuffle)
+    shuf = params.get('shuffle') or {}
+    n_shuffle = int(shuf.get('n', 0) or 0) if isinstance(shuf, dict) else int(shuf or 0)
+    real_r2 = params['metrics'].get('cv_r2')
+    if n_shuffle and params['metrics'].get('cross_validated') and real_r2 is not None and np.isfinite(real_r2):
+        n_splits_used = int(params['metrics'].get('n_splits', 5))
+        p, null_mean = shuffle_null_cv_r2(
+            X_model, sy, family, event_idx, n_splits_used, alpha, real_r2, n_shuffle=n_shuffle)
+        params['metrics']['shuffle_p'] = p
+        params['metrics']['shuffle_null_mean'] = null_mean
+        params['metrics']['shuffle_n'] = n_shuffle
 
     outputs = {
-        'predicted': predicted, 
-        'observed': sy, 
-        'event_idx': event_idx, 
-        'time_idx': time_idx, 
-        'time_bins':time_bins, 
+        'predicted': predicted,
+        'observed': sy,
+        'event_idx': event_idx,
+        'time_idx': time_idx,
+        'time_bins':time_bins,
         'attrs': attrs,
         'params': params
         }
@@ -307,7 +602,7 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
     if save_path:
         save_path = Path(save_path)
         created_on = datetime.now().strftime('%Y%m%d_%H_%M_%S') # get creation date
-        save_path = save_path / 'glm' / glm_type / f'population_to_{node}_{pose_feature}_{created_on}'
+        save_path = save_path / 'glm' / glm_type / f'population_to_{node}_{target}_{created_on}'
         save_glm_results(model, results, outputs, params, save_path)
         
 
@@ -322,6 +617,113 @@ def save_glm_results(model, results, outputs, params, save_path):
     save_model(model, model_save_path, method = 'joblib')
     save_yaml(params, params_save_path)
     _ = build_glm_dataset(outputs, attrs=outputs['attrs'], save_path=save_path)
+
+
+def build_encoder_params(node, unit, features, family: str = "Poisson",
+                         mode: str = "full", basis: dict | None = None,
+                         n_splits: int = 0):
+    """Assemble a params dict for :func:`create_glm_encoder` / :func:`compare_glm_models`.
+
+    Pure helper (no GUI dependency) so the parameter spec can be unit-tested and
+    reused by the GUI encoder dialog.
+
+    Args:
+        node (str): Reference node to model (e.g. ``'hand'``).
+        unit (int | list): Unit id, or list of unit ids. Coerced to a list.
+        features (list): Pose feature names, e.g. ``['velocity_x', 'velocity_y']``.
+        family (str, optional): GLM family name on ``statsmodels.families``.
+            Defaults to ``'Poisson'``.
+        mode (str, optional): Comparison mode passed to
+            :func:`build_glm_model_sets` (``'single'``, ``'full'``,
+            ``'single_and_full'``, ``'drop_one'``). Defaults to ``'full'``.
+        basis (dict | None, optional): Raised-cosine temporal-basis spec with keys
+            ``window`` (``(start_s, end_s)``), ``n_basis``, and ``spacing``. When
+            None, features enter the design at zero lag (same-bin). Defaults to None.
+        n_splits (int, optional): Event-grouped CV folds. ``0`` (default) fits/scores
+            in-sample; ``>=2`` adds ``params['cv']`` so the encoder reports held-out
+            predictions and a cross-validated pseudo-R².
+
+    Returns:
+        dict: A params dict consumable by the encoder functions.
+    """
+    units = list(unit) if isinstance(unit, (list, tuple)) else [unit]
+    params = {
+        "type": "encoder",
+        "family": family,
+        "pose": {"node": node, "features": list(features)},
+        "spikes": {"unit": units, "features": ["spike_counts"]},
+        "comparison": {"mode": mode},
+    }
+    if basis:
+        params["pose"]["basis"] = {
+            "window": list(basis.get("window", (0.0, 0.0))),
+            "n_basis": int(basis.get("n_basis", 5)),
+            "spacing": basis.get("spacing", "linear"),
+        }
+    if n_splits:
+        params["cv"] = {"n_splits": int(n_splits)}
+    return params
+
+
+def build_decoder_params(node, units, target, family: str = "Gaussian",
+                         n_splits: int = 5, lag: dict | None = None, alpha: float = 0.0,
+                         smoothing_s: float = 0.0, all_events: bool = False,
+                         n_shuffle: int = 0):
+    """Assemble a params dict for :func:`create_glm_decoder`.
+
+    A decoder regresses a movement feature on a *population* of units — i.e. "can
+    these neurons reconstruct speed / position?". Pure helper (no GUI dependency)
+    so it can be unit-tested and reused by the GUI decoder dialog.
+
+    Args:
+        node (str): Reference node whose movement is decoded.
+        units (list): Population of unit ids used as predictors.
+        target (str): Movement feature to decode — a scalar like ``'speed'`` or a
+            directional ``'feature_coord'`` like ``'position_y'`` / ``'velocity_x'``.
+        family (str, optional): GLM family. Defaults to ``'Gaussian'`` (continuous
+            kinematics).
+        n_splits (int, optional): Event-grouped CV folds. ``0`` fits in-sample;
+            ``>=2`` (default 5) reports held-out predictions and a CV R².
+        lag (dict | None, optional): Spike-history window — each unit's spikes are
+            expanded onto a raised-cosine lag basis (keys ``window`` ``(start_s,
+            end_s)``, ``n_basis``, ``spacing``). None = same-bin counts only.
+        alpha (float, optional): L2 (ridge) penalty. ``0`` = ordinary least
+            squares; ``>0`` regularizes — recommended once lags widen the design.
+        smoothing_s (float, optional): Gaussian smoothing σ (seconds) applied to
+            each unit's binned spikes (→ firing rate) before lagging. ``0`` = raw
+            counts. Denoising the predictors usually helps decoding.
+        all_events (bool, optional): If True, decode the node's kinematics from
+            *all* movement events rather than only the ones it initiated
+            (``reference_node == node``) — more, more varied training data.
+        n_shuffle (int, optional): If ``>0`` and CV is on, run a trial-shuffle
+            permutation test and record a p-value for the CV R². ``0`` = skip.
+
+    Returns:
+        dict: A params dict consumable by :func:`create_glm_decoder`.
+    """
+    params = {
+        "type": "decoder",
+        "family": family,
+        "pose": {"node": node, "features": [target]},
+        "spikes": {"unit": list(units), "features": ["spike_counts"]},
+    }
+    if lag:
+        params["spikes"]["basis"] = {
+            "window": list(lag.get("window", (-0.15, 0.15))),
+            "n_basis": int(lag.get("n_basis", 5)),
+            "spacing": lag.get("spacing", "linear"),
+        }
+    if smoothing_s and smoothing_s > 0:
+        params["spikes"]["smoothing_s"] = float(smoothing_s)
+    if all_events:
+        params["pose"]["all_events"] = True
+    if alpha and alpha > 0:
+        params["regularization"] = {"alpha": float(alpha)}
+    if n_shuffle and n_shuffle > 0:
+        params["shuffle"] = {"n": int(n_shuffle)}
+    if n_splits:
+        params["cv"] = {"n_splits": int(n_splits)}
+    return params
 
 
 def build_glm_model_sets(features, mode: str = "full"):

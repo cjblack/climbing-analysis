@@ -59,6 +59,8 @@ def pad_movements(movement_list: list, pad_value = np.nan):
         mov_list[mov_id] = {
             'node_list': movement['node_list'],
             'start': movement['start'],
+            'onset': movement.get('onset', movement['start']),
+            'n_pre': movement.get('n_pre', 0),
             'end': movement['end'],
             'reference_node': movement['reference_node'],
             'no_nodes': movement['no_nodes'],
@@ -175,7 +177,15 @@ def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.nd
 
     frame_rate = frame_rates[0]
     time = np.arange(lengths.max()) / frame_rate
-    
+
+    # pre-movement labelling: frames before the detected onset within each event window
+    n_pre_arr = np.array([mv.get('n_pre', 0) for mv in movement_list], dtype=int)
+    onset_arr = np.array([mv.get('onset', mv['start']) for mv in movement_list])
+    pre_movement = np.zeros((len(movement_list), lengths.max()), dtype=bool)
+    for i, npre in enumerate(n_pre_arr):
+        if npre > 0:
+            pre_movement[i, :npre] = True
+
     ds = xr.Dataset(
        data_vars = {
            "position": (
@@ -193,6 +203,18 @@ def build_movement_dataset(padded: np.ndarray, movement_list: list, valid: np.nd
             "end_idx": (
                 ['event'],
                 [mv['end'] for mv in movement_list]
+            ),
+            "onset_idx": (
+                ['event'],
+                onset_arr
+            ),
+            "n_pre": (
+                ['event'],
+                n_pre_arr
+            ),
+            "pre_movement": (
+                ['event', 'time'],
+                pre_movement
             ),
             "reference_node": (
                 ['event'],

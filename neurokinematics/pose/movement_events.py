@@ -21,8 +21,14 @@ import xarray as xr
 #from neurokinematics.pose.utils import load_df_list
 from neurokinematics.pose.io import load_df_list
 
-def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., distance: int = 100, thresh: float = 0.1):
+def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., distance: int = 100, thresh: float = 0.1, pre_window_s: float = 0.0):
     """Extracts start and stop time indices of node movements, as well as maximum velocity during movement bouts.
+
+    Optionally extends each extracted event window *backwards* in time by
+    ``pre_window_s`` seconds so that pre-movement (baseline / preparatory)
+    samples are captured. The detected movement onset is preserved separately
+    (``onset``) so downstream code can label which samples precede movement; the
+    velocity-threshold semantics of the returned ``movements_df`` are unchanged.
 
     Args:
         df (pd.DataFrame): Pandas Dataframe containing markerless pose estimation from one trial.
@@ -30,15 +36,23 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
         height (float, optional): Height cutoff in pixels for identifying movements. Defaults to 10..
         distance (int, optional): Distance between movement bouts in samples, this will be based on camera frame rate and expected time between movements. Defaults to 100.
         thresh (float, optional): Threshold in pixels of what is considered a movement. Defaults to 0.1.
+        pre_window_s (float, optional): Seconds of pre-movement data to prepend to
+            each event window. Converted to frames using the trial's frame rate
+            and clamped at the start of the trial. ``0.0`` (default) reproduces the
+            original onset-to-end window.
 
     Returns:
         pd.DataFrame: Pandas DataFrame containing start, stop, and maximum velocity indices for each node.
-        movement_list (list): List containing movement trajectories for each node with respect to a reference node
+        movement_list (list): List containing movement trajectories for each node with respect to a reference node.
+            Each entry carries ``start`` (window start, possibly pre-onset),
+            ``onset`` (detected movement onset), ``n_pre`` (pre-movement frames in
+            the window), and ``end``.
 
     Example:
         >>> movements_df, movement_list = extract_movements(
         ...     df = pose_df,
         ...     node_list = ['node1', 'node2', 'node3', 'node4'],
+        ...     pre_window_s = 0.2,
         ...     )
     """
 
@@ -50,6 +64,7 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
     id_ = df['Id'].min()
     type_ = df['Type'].min()
     frame_rate = df['SampleRate'].min()
+    pre_frames = int(round(pre_window_s * frame_rate)) if pre_window_s and pre_window_s > 0 else 0
     for i, node in enumerate(node_list):
         y=df[node+'_Y'].to_numpy()
         y_diff = np.abs(np.diff(y))#np.gradient(y))
@@ -63,30 +78,36 @@ def extract_movements(df: pd.DataFrame, node_list: list, height: float = 10., di
         y_ = dict()
         node_array_dict = dict()
         for i, idxs in enumerate(start_end): #for idxs in range(len(start_end)):
-            start_idx = idxs[0]#start_end[idxs[0]
+            onset_idx = idxs[0]   # detected movement onset (velocity-threshold crossing)
             end_idx = idxs[1]#start_end[idxs][1]
-            start_.append(start_idx)
+            start_.append(onset_idx)
             end_.append(end_idx)
-            mov_len = end_idx-start_idx
-            max_.append(start_idx+np.argmax(y_diff[start_idx:end_idx]))
+            max_.append(onset_idx+np.argmax(y_diff[onset_idx:end_idx]))
+
+            # extend window backwards to capture pre-movement samples (clamped at trial start)
+            win_start = max(0, onset_idx - pre_frames)
+            n_pre = onset_idx - win_start   # pre-movement frames actually available
+            mov_len = end_idx-win_start
             node_array = np.zeros((mov_len, len(node_list), 2)) #2 coordinates
             # carry per-node confidence (point scores) through if present
             has_scores = all((nd + '_score') in df.columns for nd in node_list)
             score_array = np.full((mov_len, len(node_list)), np.nan) if has_scores else None
             node_array_list = []
             for ii, nd in enumerate(node_list):
-                 node_array[:, ii, 0] = df[nd+'_X'].iloc[start_idx:end_idx].to_numpy() #[start_end[idxs][0]:start_end[idxs][1]] # x-coord
-                 node_array[:, ii, 1] = df[nd+'_Y'].iloc[start_idx:end_idx].to_numpy() #[start_end[idxs][0]:start_end[idxs][1]] # y-coord
+                 node_array[:, ii, 0] = df[nd+'_X'].iloc[win_start:end_idx].to_numpy() # x-coord
+                 node_array[:, ii, 1] = df[nd+'_Y'].iloc[win_start:end_idx].to_numpy() # y-coord
                  if has_scores:
-                     score_array[:, ii] = df[nd+'_score'].iloc[start_idx:end_idx].to_numpy()
+                     score_array[:, ii] = df[nd+'_score'].iloc[win_start:end_idx].to_numpy()
                  node_array_list.append(nd) # append double to keep track
 
             node_array_dict = {
                 'node_array': node_array,
                 'score_array': score_array,
                 'node_list': node_array_list,
-                'start': idxs[0], #start_end[idxs][0],
-                'end': idxs[1], #start_end[idxs][1],
+                'start': win_start,       # first sample of the (possibly extended) window
+                'onset': onset_idx,       # detected movement onset within the window
+                'n_pre': n_pre,           # number of pre-movement frames before onset
+                'end': end_idx,
                 'movement_length': node_array.shape[1],
                 'reference_node': node,
                 'no_nodes': len(node_list),

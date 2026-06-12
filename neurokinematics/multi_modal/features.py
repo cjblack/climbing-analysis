@@ -104,13 +104,16 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
     spike_counts = np.zeros((no_events, len(bin_centers), len(unit_ids)))
     pose_resampled = dict()
     for feat in pose_features:
-        if feat == 'speed':
-            pose_resampled[feat] = np.full((no_events, len(bin_centers), no_nodes), fill_value = np.nan)
-        else:
+        # directional features carry a 'coord' dim (x/y); scalar-per-node features
+        # (e.g. 'speed', 'confidence') do not.
+        if 'coord' in movement_dataset[feat].dims:
             pose_resampled[feat] = np.full((no_events, len(bin_centers), no_nodes, no_coords), fill_value = np.nan)
+        else:
+            pose_resampled[feat] = np.full((no_events, len(bin_centers), no_nodes), fill_value = np.nan)
 
     #pose_resampled = np.full((no_events, len(bin_centers), no_nodes, no_coords, no_features), fill_value = np.nan)
     valid_bins = np.zeros((no_events, len(bin_centers)), dtype=bool)
+    pre_movement_bins = np.zeros((no_events, len(bin_centers)), dtype=bool)
     unbinned_spikes = []
 
     for i, event_id in tqdm(enumerate(movement_dataset.event.values), total=no_events, desc="Extracting spikes", unit="events"):
@@ -128,6 +131,11 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
             #pose_resampled[i,:,:,:, fi] = pose_resampled_i
             if feat == pose_features[0]:
                 valid_bins[i,:] = valid_bins_i
+
+        # label bins falling before the detected movement onset as pre-movement
+        n_pre = int(movement_sub.n_pre.values) if 'n_pre' in movement_dataset else 0
+        onset_time_s = n_pre / fps
+        pre_movement_bins[i, :] = (bin_centers < onset_time_s) & valid_bins[i, :]
 
         start = alignment.query('video_index==@trial & frame_id == @start_id')['sample_index'].item()
         end = alignment.query('video_index==@trial & frame_id == @end_id')['sample_index'].item()
@@ -168,14 +176,17 @@ def get_movement_aligned_features(alignment: str | pd.DataFrame, sorter: str, mo
     
     # saving data
     save_dataframe(unbinned_spikes_df, file_path = spike_save_path / 'unbinned_movement_spikes.parquet', storage_format='parquet')
-    spike_ds = build_aligned_spike_binned_dataset(spike_counts, valid_bins, movement_dataset, bin_centers, unit_ids, attrs, spike_save_path)
-    pose_ds = build_resampled_movements_dataset(pose_resampled, valid_bins, movement_dataset, bin_centers, attrs, pose_save_path)
+    spike_ds = build_aligned_spike_binned_dataset(spike_counts, valid_bins, movement_dataset, bin_centers, unit_ids, attrs, spike_save_path, pre_movement=pre_movement_bins)
+    pose_ds = build_resampled_movements_dataset(pose_resampled, valid_bins, movement_dataset, bin_centers, attrs, pose_save_path, pre_movement=pre_movement_bins)
 
     return spike_ds, pose_ds, unbinned_spikes_df
 
 
 
-def build_aligned_spike_binned_dataset(spike_counts: np.ndarray, valid: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, unit_ids: np.ndarray, attrs: dict, save_path: Path | str | None = None):
+def build_aligned_spike_binned_dataset(spike_counts: np.ndarray, valid: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, unit_ids: np.ndarray, attrs: dict, save_path: Path | str | None = None, pre_movement: np.ndarray | None = None):
+
+    if pre_movement is None:
+        pre_movement = np.zeros_like(valid, dtype=bool)
 
     ds = xr.Dataset(
         data_vars = {
@@ -188,6 +199,11 @@ def build_aligned_spike_binned_dataset(spike_counts: np.ndarray, valid: np.ndarr
             "valid": (
                 ['event', 'time_bin'],
                 valid
+            ),
+            # boolean: True for bins before the detected movement onset (pre-movement)
+            "pre_movement": (
+                ['event', 'time_bin'],
+                pre_movement
             ),
             # subject id
             "id":(
@@ -235,16 +251,24 @@ def build_aligned_spike_binned_dataset(spike_counts: np.ndarray, valid: np.ndarr
     return ds
 
 
-def build_resampled_movements_dataset(movement_dict: dict, valid: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, attrs: dict, save_path: Path | str | None = None):
-    
+def build_resampled_movements_dataset(movement_dict: dict, valid: np.ndarray, movement_dataset: xr.Dataset, time_bins: np.ndarray, attrs: dict, save_path: Path | str | None = None, pre_movement: np.ndarray | None = None):
+
     pose_features = attrs['pose_features']
-    
+
+    if pre_movement is None:
+        pre_movement = np.zeros_like(valid, dtype=bool)
+
     ds = xr.Dataset(
         data_vars = {
             # boolean indicated non-padded indices
             "valid": (
                 ['event', 'time_bin'],
                 valid
+            ),
+            # boolean: True for bins before the detected movement onset (pre-movement)
+            "pre_movement": (
+                ['event', 'time_bin'],
+                pre_movement
             ),
             # subject id
             "id":(
@@ -277,12 +301,13 @@ def build_resampled_movements_dataset(movement_dict: dict, valid: np.ndarray, mo
     )
 
     for feat, farray in movement_dict.items():
-        if feat == 'speed':
-            # binned speed (magnitude of movement averaged across x and y coords)
-            ds[feat] = (('event', 'time_bin', 'node'), farray.squeeze())
+        farray = np.asarray(farray)
+        if farray.ndim == 4:
+            # binned directional features - e.g. 'position', 'velocity', 'acceleration'
+            ds[feat] = (('event', 'time_bin', 'node', 'coord'), farray)
         else:
-            # binned directional features - current possibilities are 'position', 'acceleration', 'velocity'
-            ds[feat] = (('event', 'time_bin', 'node', 'coord'), farray) 
+            # binned scalar-per-node features - e.g. 'speed', 'confidence'
+            ds[feat] = (('event', 'time_bin', 'node'), farray)
 
     if save_path:
         bin_info = int(np.ceil(attrs['bin_size']*1000.))

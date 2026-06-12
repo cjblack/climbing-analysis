@@ -90,32 +90,9 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
 
     # extract movements
     if movement_detection['enabled']:
-        group_cols = movement_detection['group_cols']
-        sort_cols = movement_detection['sort_cols']
-        node_list = movement_detection['node_list']
-        nunique_cols = ddf.groupby(group_cols)[group_cols].nunique().__len__()
-        movement_events = [None] * nunique_cols
-        movement_lists = []
-        ddf_group = ddf.sort_values(sort_cols).groupby(group_cols)
-        for (date_, trial_), df in ddf_group:
-            movements, movement_list = extract_movements(df, node_list)
-            movement_events.append(movements)
-            movement_lists.append(movement_list)
-            #movement_events.append(extract_movements(df, node_list))
-    
-        movement_events_df = pd.concat(movement_events)
-        
-        # save movement events
-        save_dataframe(movement_events_df, me_output_path, 'pickle') # less modular ->pd.DataFrame.to_pickle(movement_events_df, me_output_path)
-        
-        # convert and save movement_lists
-        movement_lists = np.concat(movement_lists) # concatenate lists
-        padded, mov_list, valid, lengths, padded_scores = pad_movements(movement_lists) # pad movements so they are all the same length - easier for downstream analysis
-        movement_ds = build_movement_dataset(padded, mov_list, valid, lengths, padded_scores = padded_scores, save_path = save_path) # build xarray dataset and save to zarr store
-        
-        file_outputs['movement_events'] = {'path': str(me_output_path), 'file_type': str(me_output_path.suffix), 'attrs':{}}
-        file_outputs['movement_features'] = {'path': str(save_path / 'movement_features.zarr'), 'file_type': '.zarr', 'attrs': {}} # future revamp of save structure
-    
+        _, me_outputs = extract_movement_features(ddf, movement_detection, pose_path)
+        file_outputs.update(me_outputs)
+
     file_outputs['pose_data'] = {'path': str(pose_output_path), 'file_type': str(pose_output_path.suffix), 'attrs': {}}
     
     # create lazy pose object
@@ -128,3 +105,55 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     )
 
     return pose_processed_obj, file_outputs
+
+
+def extract_movement_features(ddf: pd.DataFrame, movement_detection: dict, pose_path: Path | str):
+    """Detect movement events from a cleaned pose dataframe and build the movement
+    feature dataset (``movement_events.pkl`` + ``movement_features.zarr``).
+
+    Factored out of :func:`process_sleap` so movement features can be regenerated
+    independently — e.g. re-run with a different ``pre_window_s`` (pre-movement
+    lead-in) without repeating pose cleaning.
+
+    Args:
+        ddf (pd.DataFrame): Cleaned pose dataframe (all trials), with the node
+            ``*_X`` / ``*_Y`` columns plus ``Trial`` / ``Date`` / ``Id`` / ``Type`` /
+            ``SampleRate``.
+        movement_detection (dict): The ``movement_detection`` config block
+            (``group_cols``, ``sort_cols``, ``node_list``, optional ``pre_window_s``).
+        pose_path (Path | str): Directory to write the movement outputs into.
+
+    Returns:
+        tuple: ``(movement_ds, file_outputs)`` where ``file_outputs`` carries the
+        ``movement_events`` and ``movement_features`` entries.
+    """
+    pose_path = Path(pose_path)
+    me_output_path = pose_path / 'movement_events.pkl'
+    file_outputs = {}
+
+    group_cols = movement_detection['group_cols']
+    sort_cols = movement_detection['sort_cols']
+    node_list = movement_detection['node_list']
+    pre_window_s = movement_detection.get('pre_window_s', 0.0)  # pre-movement lead-in (s)
+
+    movement_events = []
+    movement_lists = []
+    ddf_group = ddf.sort_values(sort_cols).groupby(group_cols)
+    for (date_, trial_), df in ddf_group:
+        movements, movement_list = extract_movements(df, node_list, pre_window_s=pre_window_s)
+        movement_events.append(movements)
+        movement_lists.append(movement_list)
+
+    movement_events_df = pd.concat(movement_events)
+    save_dataframe(movement_events_df, me_output_path, 'pickle')
+
+    movement_lists = np.concat(movement_lists)  # concatenate per-group lists
+    padded, mov_list, valid, lengths, padded_scores = pad_movements(movement_lists)
+    movement_ds = build_movement_dataset(
+        padded, mov_list, valid, lengths,
+        padded_scores=padded_scores, save_path=pose_path
+    )
+
+    file_outputs['movement_events'] = {'path': str(me_output_path), 'file_type': str(me_output_path.suffix), 'attrs': {}}
+    file_outputs['movement_features'] = {'path': str(pose_path / 'movement_features.zarr'), 'file_type': '.zarr', 'attrs': {}}
+    return movement_ds, file_outputs

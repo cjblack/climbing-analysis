@@ -30,6 +30,29 @@ from neurokinematics.gui.style import brand_cmap, BG_MID
 warnings.filterwarnings("ignore", message=r".*constrained_layout not applied.*")
 
 
+def find_latest_glm_predictions(models_dir, glm_type=None):
+    """Return the most-recently-modified ``predictions.zarr`` under a session's
+    ``models/glm`` tree, or None.
+
+    GLM fits are saved by ``save_glm_results`` under
+    ``<models>/glm/<type>/<run>/predictions.zarr`` (model-comparison runs nest one
+    more level under the model name), so this globs recursively and picks the
+    newest. When ``glm_type`` is given (e.g. ``'encoder'`` / ``'decoder'``) the
+    search is restricted to that subtree. Pure/Qt-free so it can be unit-tested.
+    """
+    if not models_dir:
+        return None
+    base = Path(models_dir) / 'glm'
+    if glm_type:
+        base = base / glm_type
+    if not base.exists():
+        return None
+    candidates = list(base.glob('**/predictions.zarr'))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
 class PlotCanvas(QWidget):
     """Embeds a matplotlib Figure with navigation toolbar.
 
@@ -142,6 +165,9 @@ class PlotViewerPanel(QWidget):
         "Waveforms",
         "Autocorrelograms",
         "Spike rasters",
+        "── Encoding / Decoding ──",
+        "GLM encoder fit",
+        "GLM decoder fit",
         "── Analysis results ──",
         "Trace plot",
         "Forest plot",
@@ -158,6 +184,8 @@ class PlotViewerPanel(QWidget):
     RASTER_PLOTS  = {"Spike rasters"}
     # plots that need a trace file
     ANALYSIS_PLOTS = {"Trace plot", "Forest plot", "Posterior plot", "Posterior predictive"}
+    # GLM encoder/decoder result plots (need a session source with a models dir)
+    ENCODING_PLOTS = {"GLM encoder fit", "GLM decoder fit"}
 
     def __init__(self, loaded_objects: dict, log, parent=None):
         super().__init__(parent)
@@ -416,6 +444,17 @@ class PlotViewerPanel(QWidget):
             self._log.log("No source selected.", 'warning')
             return
 
+        if plot_type in self.ENCODING_PLOTS:
+            try:
+                ax = self.canvas_widget.get_ax()
+                glm_type = 'decoder' if 'decoder' in plot_type.lower() else 'encoder'
+                self._plot_glm_fit(obj, ax, glm_type=glm_type)
+                self.canvas_widget.canvas.draw()
+            except Exception:
+                import traceback
+                self._log.log(f"Plot error: {traceback.format_exc()}", 'error')
+            return
+
         if plot_type in self.SPIKE_PLOTS:
             try:
                 self._plot_spikes(obj, plot_type)
@@ -506,6 +545,147 @@ class PlotViewerPanel(QWidget):
         ax.set_title(f"Spike rasters — {node or 'all nodes'} / {event or 'all events'}")
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
+
+    def _plot_glm_fit(self, obj, ax, glm_type='encoder'):
+        """Observed vs (cross-validated) GLM-predicted signal over the event window,
+        averaged across events, from the most recent ``predictions.zarr`` of the
+        requested type ('encoder' = unit firing; 'decoder' = a movement feature)."""
+        import numpy as np
+        from neurokinematics.io import load_zarr
+
+        models_dir = getattr(obj, 'dirs', {}).get('models')
+        pred_path = find_latest_glm_predictions(models_dir, glm_type=glm_type)
+        if pred_path is None:
+            # self-diagnose: report what (if anything) is actually under models/glm
+            glm_root = Path(models_dir) / 'glm' if models_dir else None
+            if not models_dir:
+                where = "this source has no 'models' directory — is the Plot Viewer source the session you fit on (a 📅 row, not the group/subject)?"
+            elif not (glm_root and glm_root.exists()):
+                where = f"nothing under {glm_root} — no GLM has been fit/saved for this session yet."
+            else:
+                types = sorted(p.name for p in glm_root.iterdir() if p.is_dir())
+                where = (f"found GLM types {types} but none named '{glm_type}'. "
+                         "If the fit is still running, wait for 'Done.' in the log; "
+                         "if it errored, the fit logged a '✗' line — check the log panel.")
+            raise ValueError(f"No GLM {glm_type} predictions found — {where}")
+
+        ds = load_zarr(pred_path, method='xarray')
+        obs = np.asarray(ds['observed_counts'].values, dtype=float)
+        pred = np.asarray(ds['predicted_counts'].values, dtype=float)
+        valid = ds['valid'].values if 'valid' in ds else np.isfinite(obs)
+        t = ds['time_bin'].values
+
+        obs_v = np.where(valid, obs, np.nan)
+        pred_v = np.where(valid, pred, np.nan)
+        obs_m = np.nanmean(obs_v, axis=0)
+        pred_m = np.nanmean(pred_v, axis=0)
+        n = np.clip(np.sum(valid & np.isfinite(pred_v), axis=0), 1, None)
+        obs_se = np.nanstd(obs_v, axis=0) / np.sqrt(n)
+
+        # best-effort: shade the pre-movement portion of the window
+        self._shade_pre_movement(obj, ax, t)
+
+        attrs = dict(ds.attrs or {})
+        is_decoder = str(attrs.get('model_type', glm_type)) == 'decoder'
+
+        params_yaml = self._load_glm_params(pred_path)
+        metrics = params_yaml.get('metrics', {}) or {}
+        family = params_yaml.get('family') or ('Gaussian' if is_decoder else 'Poisson')
+        cross_validated = bool(metrics.get('cross_validated', False))
+
+        # goodness-of-fit computed from the predictions actually plotted — these are
+        # held-out predictions when CV ran, in-sample otherwise — so the score on
+        # screen always matches the curve being shown
+        from neurokinematics.models.glm import glm_cv_scores
+        fit_mask = valid & np.isfinite(obs) & np.isfinite(pred)
+        score = glm_cv_scores(obs[fit_mask], pred[fit_mask], family) if fit_mask.any() else {}
+        r2, corr = score.get('cv_r2'), score.get('cv_corr')
+        r2_name = 'R²' if str(family).lower() == 'gaussian' else 'pseudo-R²'
+        kind = 'CV' if cross_validated else 'in-sample'
+        score_str = (f"{kind} {r2_name} = {r2:.3f}"
+                     if (r2 is not None and np.isfinite(r2)) else f"{r2_name} = n/a")
+
+        pred_label = 'GLM predicted' + (' (CV)' if cross_validated else '')
+        ax.plot(t, obs_m, color='black', lw=1.5, label='Observed')
+        ax.fill_between(t, obs_m - obs_se, obs_m + obs_se, color='black', alpha=0.15)
+        ax.plot(t, pred_m, color='#9e1e62', lw=2, ls='--', label=pred_label)
+
+        node = attrs.get('node', '?')
+        ax.set_xlabel("Time in event window (s)")
+        if is_decoder:
+            target = attrs.get('target') or (attrs.get('features', {}) or {}).get('pose', 'feature')
+            units = attrs.get('unit', [])
+            n_units = len(units) if isinstance(units, (list, tuple)) else 1
+            ax.set_title(f"GLM decoder — {n_units} unit(s) → {node} {target}\n{score_str}")
+            ax.set_ylabel(str(target))
+        else:
+            unit = attrs.get('unit', '?')
+            feats = attrs.get('features', {})
+            pose_feats = feats.get('pose') if isinstance(feats, dict) else feats
+            basis = attrs.get('basis')
+            ax.set_title(f"GLM encoder — {node} → unit {unit}\n{score_str}")
+            ax.set_ylabel("Spike count / bin")
+            extra = f"features: {pose_feats}"
+            if isinstance(basis, dict):
+                extra += f"   ·   basis {basis.get('window')} ({basis.get('n_basis')} fns)"
+            ax.text(0.01, 0.99, extra, transform=ax.transAxes, va='top', ha='left',
+                    fontsize=7, color='gray')
+
+        # fit-detail box (Pearson r + validation scheme), bottom-right
+        detail = []
+        if corr is not None and np.isfinite(corr):
+            detail.append(f"r = {corr:.3f}")
+        if cross_validated:
+            ns = metrics.get('n_splits')
+            detail.append(f"{ns}-fold CV (grouped by event)" if ns else "event-grouped CV")
+        else:
+            detail.append("in-sample (no CV)")
+        if metrics.get('shuffle_p') is not None:
+            detail.append(f"p = {metrics['shuffle_p']:.3g} vs shuffle")
+        if detail:
+            ax.text(0.99, 0.02, "\n".join(detail), transform=ax.transAxes, va='bottom',
+                    ha='right', fontsize=7.5, color='#262161',
+                    bbox=dict(boxstyle='round', fc='white', ec='#cccccc', alpha=0.85))
+
+        ax.legend(fontsize=8, loc='upper right')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        self._log.log(f"GLM {'decoder' if is_decoder else 'encoder'} fit — "
+                      f"{pred_path.parent.name}", 'success')
+
+    @staticmethod
+    def _load_glm_params(pred_path):
+        """Read the sibling glm_params.yaml (family, metrics, cv scheme) if present."""
+        try:
+            import yaml
+            pj = Path(pred_path).parent / 'glm_params.yaml'
+            if pj.exists():
+                with open(pj) as f:
+                    return yaml.safe_load(f) or {}
+        except Exception:
+            pass
+        return {}
+
+    def _shade_pre_movement(self, obj, ax, t):
+        """Lightly shade the pre-movement portion of the window if the binned spike
+        store carries the ``pre_movement`` mask. Best-effort; silent on failure."""
+        try:
+            import numpy as np
+            from neurokinematics.io import load_zarr
+            spikes_dir = getattr(obj, 'dirs', {}).get('spikes')
+            if not spikes_dir:
+                return
+            stores = sorted(Path(spikes_dir).glob('movement_spike_counts_*ms.zarr'))
+            if not stores or 'pre_movement' not in (sds := load_zarr(stores[-1], method='xarray')):
+                return
+            frac = sds['pre_movement'].values.mean(axis=0)   # per-bin fraction pre-movement
+            tb = sds['time_bin'].values
+            pre_bins = tb[frac >= 0.5]
+            if pre_bins.size:
+                ax.axvspan(float(tb.min()), float(pre_bins.max()),
+                           color='steelblue', alpha=0.08, label='pre-movement')
+        except Exception:
+            pass
 
     def _on_plot_type_changed(self, plot_type: str):
         is_spike = plot_type in self.SPIKE_PLOTS
