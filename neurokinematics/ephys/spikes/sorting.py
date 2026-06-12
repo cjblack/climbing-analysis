@@ -13,7 +13,6 @@ from spikeinterface import create_sorting_analyzer
 from spikeinterface.preprocessing import apply_preprocessing_pipeline, PreprocessingPipeline
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.sorters import run_sorter
-#from spikeinterface.qualitymetrics import compute_quality_metrics # future deprecation - remove after tests
 from spikeinterface.metrics.quality import compute_quality_metrics
 from neurokinematics.io import save_dataframe
 from neurokinematics.ephys.io import *
@@ -120,6 +119,5 @@ def sorting_analyzer(sorting, recording, data_path, compute_dict: dict, quality_
 def preprocess_ephys(recording, preprocessing_dict):
 
     preprocessed_recording = apply_preprocessing_pipeline(recording, preprocessing_dict)
-
 
     return preprocessed_recording
