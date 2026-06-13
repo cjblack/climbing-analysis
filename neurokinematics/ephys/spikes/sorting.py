@@ -14,9 +14,11 @@ from spikeinterface.preprocessing import apply_preprocessing_pipeline, Preproces
 from spikeinterface.exporters import export_to_phy
 from spikeinterface.sorters import run_sorter
 from spikeinterface.metrics.quality import compute_quality_metrics
+
+
 from neurokinematics.io import save_dataframe
 from neurokinematics.ephys.io import *
-from neurokinematics.ephys.utils import create_probe
+from neurokinematics.ephys.utils import create_probe, get_stream_name
 
 def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None): 
     """Sort spikes from data file - default is running kilosort4 on open ephys data recorded with H5 probe.
@@ -55,6 +57,8 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
     quality_metrics = sorting_cfg['quality_metrics']
     preprocessing_steps = sorting_cfg.get('preprocess', None)
     
+    stream_name = get_stream_name(data_path, rec_type, rec_node)
+
     data_path = Path(data_path) # windows path
     save_path = Path(save_path) if save_path else Path(data_path)
     output_folder  = save_path / sorter            # spikeinterface creates this when running kilosort4
@@ -64,6 +68,7 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
     qual_metrics_path = save_path / 'spike_qc_metrics.csv'
 
     recording = read_data(data_path=Path(data_path), rec_type=rec_type, stream_name=stream_name)
+    
     if probe_id.lower() != 'neuropixels':
         probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
         recording = recording.set_probe(probe, group_mode=group_mode) # sets probe
