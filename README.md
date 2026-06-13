@@ -1,4 +1,4 @@
-[![Unit Test](https://github.com/cjblack/neurokinematics/actions/workflows/session_class_test.yml/badge.svg?branch=development)](https://github.com/cjblack/neurokinematics/actions/workflows/session_class_test.yml)
+[![Unit Test](https://github.com/cjblack/neurokinematics/actions/workflows/unit.yml/badge.svg?branch=development)](https://github.com/cjblack/neurokinematics/actions/workflows/unit.yml)
 
  # neurokinematics
 
