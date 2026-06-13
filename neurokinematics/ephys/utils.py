@@ -13,9 +13,46 @@ import numpy as np
 import spikeinterface.extractors as se
 import yaml
 from spikeinterface.core import write_binary_recording
+import spikeinterface.extractors as se
 from probeinterface import get_probe, read_probeinterface
 from open_ephys.analysis import Session
 
+
+
+def get_stream_name(data_path: str | Path, rec_type: str, rec_node: str, stream_type: str = 'AP'):
+    """_summary_
+
+    Args:
+        data_path (str | Path): _description_
+        rec_type (str): _description_
+        rec_node (str): _description_
+        stream_type (str, optional): _description_. Options: 'AP' for spikes, 'LFP' for LFP. Defaults to 'AP'.
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
+    """
+    if rec_type == 'openephys':
+        streams = se.get_neo_streams('openephysbinary', data_path)
+        for i, sn in enumerate(streams[0]):
+            # check if acquisition board or PXI neuropixel
+            if (rec_node in sn and 'acquisition_board' in sn and 'ADC' not in sn) or (rec_node in sn and stream_type in i):
+                stream_name = sn
+
+
+    else:
+        if rec_type in se.recording_extractor_full_dict.keys():
+            streams = se.get_neo_streams(rec_type, data_path)
+        else:
+            raise ValueError(f'{rec_type} is not a valid. Please select one of the following options: f{se.recording_extractor_full_dict.keys()}')
+
+    return stream_name
+
+'''
+CHECK DEPRECATED
+'''
 
 CHANNEL_MAP_PATH = Path(__file__).resolve().parent / 'channel_maps'
 SORTING_PARAMS_PATH = Path(__file__).resolve().parent / 'sorting_params'
