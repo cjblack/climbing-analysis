@@ -22,8 +22,8 @@ quality_metrics:
   - 'd_prime'
 
 # probe information
-probe_manufacturer: "neuropixels"
-#probe_id: "ASSY-236-H5"
+probe_manufacturer: "imec"
+probe_id: "neuropixels"
 #group_mode: 'auto'
 
 # recording information
