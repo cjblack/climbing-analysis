@@ -34,6 +34,8 @@ import pandas as pd
 import dask.dataframe as dd
 import yaml
 
+from neurokinematics.config import REGISTRY
+
 
 
 ### * configs * ###
@@ -421,14 +423,13 @@ def load_config(filename: Path | str, config_type: str | None = None):
     else:
         file_path = Path(filename) # for tests
 
-    #file_path = _require_file(file_path)
 
-    #if type(config_type) == str:
-    #    filename = CFG_PATHS[config_type] / filename
-    #with open(file_path, "r") as f:
-    config = load_yaml(file_path)
+    config_raw = load_yaml(file_path)
     
-    return config
+    cfg_mdl = REGISTRY[config_type]
+    config = cfg_mdl(**config_raw)
+    
+    return config.model_dump()
 
 def load_file(file_path: Path | str, method: str = 'pandas'):
     """
