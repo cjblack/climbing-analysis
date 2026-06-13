@@ -1,0 +1,51 @@
+name: "sample_spike_sorting_cfg"
+rec_type: "openephys" # name of recording format
+sorter: "kilosort4" # name of sorter to be used, ensure this is implemented by spikeinterface
+to_compute:
+ random_spikes: {}
+ waveforms:
+  ms_before: 1.0
+  ms_after: 2.0
+ templates: {}
+ noise_levels: {}
+ spike_locations: {}
+
+# spike interface quality metrics
+quality_metrics:
+  - 'firing_rate'
+  - 'snr'
+  - 'amplitude_cutoff'
+  - 'drift'
+  - 'mahalanobis'
+  - 'isi_violation'
+  - 'sd_ratio'
+  - 'd_prime'
+
+# probe information
+probe_manufacturer: "neuropixels"
+#probe_id: "ASSY-236-H5"
+#group_mode: 'auto'
+
+# recording information
+#channel_map: "h5_open_ephys_acquisition_channel_map.npy"
+#stream_name: "Record Node 109#Acquisition_Board-100.acquisition_board-B"
+rec_node: 118
+sample_rate: 30000.
+
+# label-only auto-curation thresholds (optional; omit to use built-in defaults).
+# A unit is labelled 'good' if it passes every rule on metrics that were computed
+# above; otherwise it gets fail_label. Labels are written to phy's cluster_group.tsv
+# as a starting point for manual curation — nothing is merged/removed.
+curation:
+  fail_label: mua
+  rules:
+    snr: {min: 2.0}
+    amplitude_cutoff: {max: 0.1}
+    isi_violations_ratio: {max: 0.5}
+    firing_rate: {min: 0.1}
+
+# preprocessing steps for spikeinterface
+preprocess:
+  detect_and_remove_bad_channels: {}
+  #highpass_filter: {}
+  #whiten: {}

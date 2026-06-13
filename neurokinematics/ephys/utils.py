@@ -20,34 +20,48 @@ from open_ephys.analysis import Session
 
 
 def get_stream_name(data_path: str | Path, rec_type: str, rec_node: str, stream_type: str = 'AP'):
-    """_summary_
+    """Auto-detect the spikeinterface stream name to sort from a recording folder.
+
+    For Open Ephys, enumerates the available streams and picks the one belonging to
+    the given Record Node that is either the acquisition-board wideband stream
+    (excluding ADC) or the requested Neuropixels band (``stream_type``).
 
     Args:
-        data_path (str | Path): _description_
-        rec_type (str): _description_
-        rec_node (str): _description_
-        stream_type (str, optional): _description_. Options: 'AP' for spikes, 'LFP' for LFP. Defaults to 'AP'.
+        data_path (str | Path): Path to the recording folder.
+        rec_type (str): Recording format (currently only ``'openephys'``).
+        rec_node (str | int): Open Ephys Record Node id (e.g. ``118``).
+        stream_type (str, optional): ``'AP'`` for spikes, ``'LFP'`` for LFP.
+            Defaults to ``'AP'``.
 
     Raises:
-        ValueError: _description_
+        ValueError: If no matching stream is found (lists the available streams).
+        NotImplementedError: For non-Open-Ephys formats.
 
     Returns:
-        _type_: _description_
+        str: The resolved stream name to pass to the recording extractor.
     """
-    if rec_type == 'openephys':
-        streams = se.get_neo_streams('openephysbinary', data_path)
-        for i, sn in enumerate(streams[0]):
-            # check if acquisition board or PXI neuropixel
-            if (rec_node in sn and 'acquisition_board' in sn and 'ADC' not in sn) or (rec_node in sn and stream_type in i):
-                stream_name = sn
+    if rec_type != 'openephys':
+        raise NotImplementedError(
+            f"Automatic stream detection is only implemented for rec_type='openephys' "
+            f"(got '{rec_type}')."
+        )
 
+    stream_names = se.get_neo_streams('openephysbinary', data_path)[0]
+    rec_node = str(rec_node)
+    stream_name = None
+    for sn in stream_names:
+        on_node = rec_node in sn
+        is_acq_board = ('acquisition_board' in sn) and ('ADC' not in sn)
+        is_band = stream_type in sn          # e.g. Neuropixels '...-AP' / '...-LFP'
+        if on_node and (is_acq_board or is_band):
+            stream_name = sn
+            break
 
-    else:
-        if rec_type in se.recording_extractor_full_dict.keys():
-            streams = se.get_neo_streams(rec_type, data_path)
-        else:
-            raise ValueError(f'{rec_type} is not a valid. Please select one of the following options: f{se.recording_extractor_full_dict.keys()}')
-
+    if stream_name is None:
+        raise ValueError(
+            f"Could not auto-detect a '{stream_type}' stream for Record Node "
+            f"{rec_node} in {data_path}.\nAvailable streams: {list(stream_names)}"
+        )
     return stream_name
 
 '''

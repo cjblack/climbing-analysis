@@ -652,22 +652,27 @@ class ExperimentSession:
             except Exception as e:
                 print(f"[spike preprocessing] bad-channel detection skipped: {e}")
 
+        # Bad-channel removal is handled inside sort() by the config preprocess
+        # pipeline (e.g. 'detect_and_remove_bad_channels'), so we no longer pass a
+        # bad_channels list here. The `bad_channels` arg / GUI review is retained as
+        # informational QC only (see report below).
         self.sorter, self.recording, self.probe, self.analyzer, self.spike_qc_metrics, file_outputs = sort(
             data_path = self.ephys_data_path,
             cfg_file = self.sorting_cfg,   # already-loaded config (robust to cfg nesting)
             save_path = self.dirs['spikes'],
-            bad_channels = bad_channels,
         )
 
-        # persist the final bad-channel decision alongside the sort for QC
+        # persist a bad-channel QC record alongside the sort
         try:
             from neurokinematics.ephys.spikes.preprocessing import write_bad_channel_report
             detection = getattr(self, '_spike_detection', None)
             if detection is not None:
+                cfg = self.sorting_cfg if isinstance(self.sorting_cfg, dict) else {}
+                pipeline_removes = 'detect_and_remove_bad_channels' in (cfg.get('preprocess') or {})
                 write_bad_channel_report(
                     self.dirs['spikes'], detection,
-                    removed=bad_channels or [],
-                    policy='remove' if bad_channels else 'keep')
+                    removed=[],   # removal (if any) is done by the preprocess pipeline
+                    policy='pipeline' if pipeline_removes else 'keep')
         except Exception:
             pass
 

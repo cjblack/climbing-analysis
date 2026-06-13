@@ -1,0 +1,21 @@
+session:
+  output_root: set_location_for_data
+  behaviour: demo
+  ephys:
+    acquisition: openephys
+    lfp:
+      node_idx: 0
+      rec_idx: 0
+    spikes:
+      node_idx: 1
+      rec_idx: 0
+configs:
+  spikes: neuropixel_cfg.yaml
+  lfp: demo_lfp_cfg.yaml
+  pose: demo_pose_cfg.yaml
+  multi_modal: demo_camera_alignment_cfg.yaml
+  models: demo_model_cfg.yaml
+pipeline:
+  run_pose: true
+  run_spikes: true
+  run_lfp: true

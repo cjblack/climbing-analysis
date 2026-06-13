@@ -48,16 +48,20 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
     
     rec_type = sorting_cfg['rec_type']
     sorter = sorting_cfg['sorter']
-    probe_id = sorting_cfg['probe_id']
+    probe_id = sorting_cfg.get('probe_id', None)
     probe_manufacturer = sorting_cfg['probe_manufacturer']
-    group_mode = sorting_cfg['group_mode']
-    channel_map = sorting_cfg['channel_map']
-    stream_name = sorting_cfg['stream_name']
+    group_mode = sorting_cfg.get('group_mode', None)
+    channel_map = sorting_cfg.get('channel_map', None)
+    rec_node = sorting_cfg.get('rec_node', None)
+    stream_name = sorting_cfg.get('stream_name', None)
     to_compute = sorting_cfg['to_compute']
     quality_metrics = sorting_cfg['quality_metrics']
     preprocessing_steps = sorting_cfg.get('preprocess', None)
-    
-    stream_name = get_stream_name(data_path, rec_type, rec_node)
+
+    # use an explicit stream_name if the config provides one (e.g. acquisition
+    # board); otherwise auto-detect it from the Record Node (e.g. Neuropixels)
+    if not stream_name:
+        stream_name = get_stream_name(data_path, rec_type, rec_node)
 
     data_path = Path(data_path) # windows path
     save_path = Path(save_path) if save_path else Path(data_path)
@@ -68,8 +72,11 @@ def sort(data_path: str, cfg_file:str, save_path: Path | str | None = None):
     qual_metrics_path = save_path / 'spike_qc_metrics.csv'
 
     recording = read_data(data_path=Path(data_path), rec_type=rec_type, stream_name=stream_name)
-    
-    if probe_id.lower() != 'neuropixels':
+
+    # Neuropixels carry probe geometry in the recording, so spikeinterface attaches
+    # it automatically; only build/attach a probe for other manufacturers.
+    probe = None
+    if probe_id and probe_id.lower() != 'neuropixels':
         probe = create_probe(probe_manufacturer, probe_id, channel_map) # creates probe from manufacturer, id, and channel map
         recording = recording.set_probe(probe, group_mode=group_mode) # sets probe
     if preprocessing_steps:
