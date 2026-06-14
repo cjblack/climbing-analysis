@@ -9,7 +9,7 @@ import os
 import glob
 
 from neurokinematics.pose.preprocessing.cleaning import fill_missing, remove_high_velocity, remove_low_confidence
-from neurokinematics.pose.metadata import _METADATA_RESOLVERS
+from neurokinematics.pose.metadata import resolve_file_metadata
 
 import pickle
 import xarray as xr
@@ -293,10 +293,11 @@ def dask_load_file(filename: str,sample_rate: float = 200., meta_cfg: dict, prep
     #exp_date = exp_info[2]
     #exp_trial = exp_info[3].split('.')[0].split('T')[1]
 
-    meta = _METADATA_RESOLVERS[meta_cfg['source']](filename, meta_cfg)
+    meta = resolve_file_metadata(filename, meta_cfg)
 
     df['Path'] = dir_info[0]
     df['File'] = dir_info[1]
+
     df['Id'] = meta['Id']#sub_id
     df['Type'] = meta['Type']#exp_type
     df['Date'] = pd.to_datetime(meta['Date'])#pd.to_datetime(exp_date)
@@ -306,22 +307,8 @@ def dask_load_file(filename: str,sample_rate: float = 200., meta_cfg: dict, prep
     return df
 
 
-# def pixels_to_cm(wall='2mm_basic'):
-#     # wall distance 6mm average = 25.3px
-#     # wall distance 6mm std = 1.6px
-#     if wall == '2mm_basic':
-#         px_to_cm = (6.0/25.3)*0.1 #ratio to multiply pixels by
-#     return px_to_cm
+# def load_pickle(fname):
+#     with open(fname, "rb") as f:  # "rb" = read binary
+#         data = pickle.load(f)
+#     return data
 
-def load_pickle(fname):
-    with open(fname, "rb") as f:  # "rb" = read binary
-        data = pickle.load(f)
-    return data
-
-# def get_trial_order(dflist):
-#     trial_ids = []
-#     for df in dflist:
-#         tid = int(df.attrs['Trial'].split('T')[-1])
-#         trial_ids.append(tid)
-#     trial_ids_sort = np.argsort(trial_ids)
-#     return trial_ids_sort
