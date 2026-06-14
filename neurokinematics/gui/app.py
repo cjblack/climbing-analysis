@@ -1651,24 +1651,38 @@ class MainWindow(QMainWindow):
 
         new_project  = QAction("New Project",  self)
         load_project = QAction("Load Project", self)
-        file_menu.addAction(new_project)
-        file_menu.addAction(load_project)
+
+        
+        
 
         load_sample = QAction("Load Sample Project", self)
         load_sample.triggered.connect(self._load_sample_project)
-        file_menu.addAction(load_sample)
-        file_menu.addSeparator()
+
+
 
         new_group   = QAction("New Group",   self)
         load_group  = QAction("Load Group",  self)
-        file_menu.addAction(new_group)
-        file_menu.addAction(load_group)
-        file_menu.addSeparator()
+
+        
+        
+
 
         new_subject  = QAction("New Subject",  self)
         load_subject = QAction("Load Subject", self)
+
+        # new
         file_menu.addAction(new_subject)
+        file_menu.addAction(new_group)
+        file_menu.addAction(new_project)
+        file_menu.addSeparator()
+
+        # loads
         file_menu.addAction(load_subject)
+        file_menu.addAction(load_group)
+        file_menu.addAction(load_project)
+        file_menu.addAction(load_sample)
+        
+
         file_menu.addSeparator()
 
         clear_workspace = QAction("Clear Workspace", self)
