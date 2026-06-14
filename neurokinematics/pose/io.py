@@ -7,11 +7,11 @@ import dask.dataframe as dd
 import h5py
 import os
 import glob
-import h5py
+
 from neurokinematics.pose.preprocessing.cleaning import fill_missing, remove_high_velocity, remove_low_confidence
-from pathlib import Path
+from neurokinematics.pose.metadata import _METADATA_RESOLVERS
+
 import pickle
-import h5py
 import xarray as xr
 
 dask.config.set({"dataframe.convert-string": False}) # reduces unnecessary conversions during dask compute calls
@@ -228,7 +228,7 @@ def load_file(filename,sample_rate=200.,preprocess=False):
     poseDF.attrs = {'Path':dir_info[0],'File':dir_info[1],'Id':sub_id,'Type':exp_type,'Date':exp_date,'Trial':exp_trial, 'SampleRate':sample_rate}
     return poseDF
 
-def dask_batch_load_files(file_list: list, sample_rate: float = 200., preprocess: dict | None = None):
+def dask_batch_load_files(file_list: list, sample_rate: float = 200., meta_cfg: dict, preprocess: dict | None = None):
     """Create a dask dataframe of all data, useful for distributed processing. File metadata are columnar entries. This is handled differently from batch_load_files, as pandas attributes are not partition specific.
 
     Args:
@@ -241,15 +241,12 @@ def dask_batch_load_files(file_list: list, sample_rate: float = 200., preprocess
     """
 
 
-    ddfs = dd.from_map(dask_load_file, file_list, sample_rate=sample_rate, preprocess=preprocess)
+    ddfs = dd.from_map(dask_load_file, file_list, sample_rate=sample_rate, meta_cfg, preprocess=preprocess)
 
     
-    ## SAVING AS PARQUET
-    # ddfs = dd.concat(ddfs)
-    # ddfs.to_parquet(data_path / 'pose' / 'processed', engine='pyarrow', compression='zstd')
     return ddfs
 
-def dask_load_file(filename: str,sample_rate: float = 200., preprocess: dict | None = None):
+def dask_load_file(filename: str,sample_rate: float = 200., meta_cfg: dict, preprocess: dict | None = None):
     """Load H5 data into a pandas dataframe for converting to dask dataframe. Compared to load_files, this stores file metadata as columnar instead of as dataframe attributes.
 
     Args:
@@ -290,18 +287,20 @@ def dask_load_file(filename: str,sample_rate: float = 200., preprocess: dict | N
                    tracking_scores=tracking_scores)
 
     dir_info = os.path.split(filename) # file info
-    exp_info = str.split(dir_info[1],'_') # experiment info
-    sub_id = exp_info[0]
-    exp_type = exp_info[1]
-    exp_date = exp_info[2]
-    exp_trial = exp_info[3].split('.')[0].split('T')[1]
+    #exp_info = str.split(dir_info[1],'_') # experiment info
+    #sub_id = exp_info[0]
+    #exp_type = exp_info[1]
+    #exp_date = exp_info[2]
+    #exp_trial = exp_info[3].split('.')[0].split('T')[1]
+
+    meta = _METADATA_RESOLVERS[meta_cfg['source']](filename, meta_cfg)
 
     df['Path'] = dir_info[0]
     df['File'] = dir_info[1]
-    df['Id'] = sub_id
-    df['Type'] = exp_type
-    df['Date'] = pd.to_datetime(exp_date)
-    df['Trial'] = int(exp_trial)
+    df['Id'] = meta['Id']#sub_id
+    df['Type'] = meta['Type']#exp_type
+    df['Date'] = pd.to_datetime(meta['Date'])#pd.to_datetime(exp_date)
+    df['Trial'] = int(meta['Trial'])#int(exp_trial)
     df['SampleRate'] = sample_rate
 
     return df

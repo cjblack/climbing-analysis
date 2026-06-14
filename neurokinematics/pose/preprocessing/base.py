@@ -53,6 +53,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     preprocessing = cfg['pose_preprocessing']
     file_format = cfg['pose_format']['file_format']
     sample_rate = cfg['pose_format']['frame_rate']
+    meta_cfg = cfg['pose_format']['metadata']
     movement_detection = cfg['movement_detection']
 
     # create file outputs dictionary - currently testing
@@ -81,7 +82,8 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     ddf = dask_batch_load_files(
         file_list,
         sample_rate=sample_rate,
-        preprocess=preprocessing
+        meta_cfg = meta_cfg,
+        preprocess=preprocessing,
     )
 
     # save dataframe, this is eager as we need to compute before saving
