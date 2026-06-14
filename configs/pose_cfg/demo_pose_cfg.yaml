@@ -3,6 +3,21 @@ pose_format:
   pose_type: 'sleap'
   file_format: 'h5'
   frame_rate: 200.
+  metadata:
+    source: 'filename' # 'filename' | 'manifest' | 'sidecar' | 'custom'
+    pattern: '(?P<Id>[^_]+)_(?P<Type>[^_]+)_(?P<Date>\d{8})_T(?P<Trial>\d+)' # regex format for filename
+# MANIFEST
+# source: 'manifest'
+# path: 'pose/manifest.csv' # columns: file, Id, Type, Date, Trial
+# key: 'file'
+
+# SIDECAR
+# source: 'sidecar'
+# suffix: '.meta.yml'
+
+# CUSTOM
+# add a custom formatting for metadata - see neurokinematics/pose/metadata.py for creating function
+
 pose_preprocessing:
   fill_missing: true
   # Max gap (in frames) to interpolate across. Gaps longer than this are left as
