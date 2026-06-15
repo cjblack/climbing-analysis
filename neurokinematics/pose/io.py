@@ -10,6 +10,7 @@ import glob
 
 from neurokinematics.pose.preprocessing.cleaning import fill_missing, remove_high_velocity, remove_low_confidence
 from neurokinematics.pose.metadata import resolve_file_metadata
+from neurokinematics import io
 
 import pickle
 import xarray as xr
@@ -144,7 +145,7 @@ def _frame_score(scores):
 
 
 def create_df(locs, node_locs, fps=200.,
-              point_scores=None, instance_scores=None, tracking_scores=None):
+              coords = ["X", "Y"], point_scores=None, instance_scores=None, tracking_scores=None):
     '''
     Creates a data frame with predictions (x,y coordinates) for each joint, and appends timestamps based on frame rate.
 
@@ -164,8 +165,9 @@ def create_df(locs, node_locs, fps=200.,
     '''
     locDictionary = dict()
     for node, val in node_locs.items():
-        locDictionary[node+'_X'] = locs[:,val,0,0]
-        locDictionary[node+'_Y'] = locs[:,val,1,0]*-1
+        for i, coord in enumerate(coords):
+            locDictionary[node+f'_{coord}'] = locs[:,val,i,0]
+            #locDictionary[node+'_Y'] = locs[:,val,1,0]*-1
         if point_scores is not None:
             locDictionary[node+'_score'] = _node_point_score(point_scores, val)
     locDictionary['frame_id'] = np.arange(0,locs.shape[0],1) #timestamps in seconds
@@ -228,7 +230,7 @@ def load_file(filename,sample_rate=200.,preprocess=False):
     poseDF.attrs = {'Path':dir_info[0],'File':dir_info[1],'Id':sub_id,'Type':exp_type,'Date':exp_date,'Trial':exp_trial, 'SampleRate':sample_rate}
     return poseDF
 
-def dask_batch_load_files(file_list: list, meta_cfg: dict, sample_rate: float = 200., preprocess: dict | None = None):
+def dask_batch_load_files(file_list: list, tracker: str, meta_cfg: dict, sample_rate: float = 200., preprocess: dict | None = None):
     """Create a dask dataframe of all data, useful for distributed processing. File metadata are columnar entries. This is handled differently from batch_load_files, as pandas attributes are not partition specific.
 
     Args:
@@ -241,12 +243,20 @@ def dask_batch_load_files(file_list: list, meta_cfg: dict, sample_rate: float = 
     """
 
 
-    ddfs = dd.from_map(dask_load_file, file_list, sample_rate=sample_rate, preprocess=preprocess, meta_cfg=meta_cfg)
+    ddfs = dd.from_map(dask_load_file, file_list, tracker = tracker, sample_rate=sample_rate, preprocess=preprocess, meta_cfg=meta_cfg)
 
     
     return ddfs
 
 def load_sleap(filename: str):
+    """SLEAP loader
+
+    Args:
+        filename (str): _description_
+
+    Returns:
+        _type_: _description_
+    """
     filename = Path(filename)
     with h5py.File(filename, "r") as f:
         locations = f["tracks"][:].T  # x,y coords of labeled joints
@@ -255,42 +265,68 @@ def load_sleap(filename: str):
         tracking_scores = f["tracking_scores"][:].T
         node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
         node_locs = dict([(name, i) for i, name in enumerate(node_names)])  # create dictionary of {joint: idx}
+    locations[:,:,1,:] *= -1
     return {
             'locations': locations, 
             'point_scores': point_scores, 
             'instance_scores': instance_scores, 
             'tracking_scores': tracking_scores, 
             'node_names': node_names,
-            'node_locs': node_locs
+            'node_locs': node_locs,
+            'coords': ["X", "Y"],
             }
 
 def load_anipose(filename: str, n_subjects: int =1):
+    """Anipose loader
+
+    Args:
+        filename (str): _description_
+        n_subjects (int, optional): _description_. Defaults to 1.
+
+    Returns:
+        _type_: _description_
+    """
     filename = Path(filename)
     if filename.suffix == '.h5':
-        df = pd.read_hdf(filename)
+        df = io.load_file(filename)
         n_frames = df.shape[0]
         node_names = list(dict.fromkeys(df.columns.get_level_values(1)))
         node_locs = dict([(name, i) for i, name in enumerate(node_names)])
-        n_nodes = len(node_names)
-        n_coords = len(list(dict.fromkeys(df.columns.get_level_values(2)))) - 1 # likelihood is one coord
-        
-        locations = np.full((n_frames, n_nodes, n_coords, n_subjects), np.nan)
-        point_scores = np.full((n_frames, n_nodes, n_subjects), np.nan)
-        for j, node in enumerate(node_names):
-            locations[:, j, 0, 0] = df.xs((node, "x"), level=(1,2), axis=1).to_numpy().ravel()
-            locations[:, j, 1, 0] = df.xs((node, "y"), level=(1, 2), axis=1).to_numpy().ravel()
-            point_scores[:, j, 0] = df.xs((node, "likelihood"), level=(1,2), axis=1).to_numpy().ravel()
+        coords = list(dict.fromkeys(df.columns.get_level_values(2)))
 
+        n_nodes = len(node_names)
+        #n_coords = len(list(dict.fromkeys(df.columns.get_level_values(2)))) - 1 # likelihood is one coord
+        if 'likelihood' in coords:
+            coords.remove('likelihood')
+            point_scores = np.full((n_frames, n_nodes, n_subjects), np.nan)
+        else:
+            point_scores = None
+        n_coords = len(coords)
+        locations = np.full((n_frames, n_nodes, n_coords, n_subjects), np.nan)
+        #point_scores = np.full((n_frames, n_nodes, n_subjects), np.nan)
+        for j, node in enumerate(node_names):
+            for i, coord in enumerate(coords):
+                locations[:, j, i, 0] = df.xs((node, coord), level=(1,2), axis=1).to_numpy().ravel()
+            if point_scores is not None:
+                point_scores[:, j, 0] = df.xs((node, "likelihood"), level=(1,2), axis=1).to_numpy().ravel()
+        coords = [coord.upper() for coord in coords] # make same convention as sleap with upper case coordinates
+
+    else:
+        raise ValueError(f"Invalid file type '{filename.suffix}'.")
     return {
         'locations': locations,
         'point_scores': point_scores,
         'node_names': node_names,
-        'node_locs': node_locs
+        'node_locs': node_locs,
+        'coords': coords
         }
 
+POSE_LOADERS = {
+    'sleap': load_sleap,
+    'anipose': load_anipose,
+}
 
-
-def dask_load_file(filename: str, meta_cfg: dict, sample_rate: float = 200., preprocess: dict | None = None):
+def dask_load_file(filename: str, tracker: str, meta_cfg: dict, sample_rate: float = 200., preprocess: dict | None = None):
     """Load H5 data into a pandas dataframe for converting to dask dataframe. Compared to load_files, this stores file metadata as columnar instead of as dataframe attributes.
 
     Args:
@@ -301,16 +337,29 @@ def dask_load_file(filename: str, meta_cfg: dict, sample_rate: float = 200., pre
     Returns:
         pandas.DataFrame: Dataframe of pose estimation time series for extracted X and Y coordinates.
     """
+    try:
+        load_func = POSE_LOADERS[tracker]
+    except KeyError:
+        raise ValueError(f"No loader for tracker '{tracker}'. Avaliable trackers: {list(POSE_LOADERS.keys())}")
+    loaded_pose = load_func(filename)
 
-    with h5py.File(filename, "r") as f:
-        locations = f["tracks"][:].T  # x,y coords of labeled joints
-        point_scores = f["point_scores"][:].T
-        instance_scores = f["instance_scores"][:].T
-        tracking_scores = f["tracking_scores"][:].T
-        node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
-        node_locs = dict([(name, i) for i, name in enumerate(node_names)])  # create dictionary of {joint: idx}
+    # with h5py.File(filename, "r") as f:
+    #     locations = f["tracks"][:].T  # x,y coords of labeled joints
+    #     point_scores = f["point_scores"][:].T
+    #     instance_scores = f["instance_scores"][:].T
+    #     tracking_scores = f["tracking_scores"][:].T
+    #     node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
+    #     node_locs = dict([(name, i) for i, name in enumerate(node_names)])  # create dictionary of {joint: idx}
     #locations =fill_missing(locations)
     
+    locations = loaded_pose['locations']
+    point_scores = loaded_pose.get('point_scores', None)
+    instance_scores = loaded_pose.get('instance_scores', None)
+    tracking_scores = loaded_pose.get('tracking_scores', None)
+    node_names = loaded_pose.get('node_names', None)
+    node_locs = loaded_pose.get('node_locs', None)
+    coords = loaded_pose.get('coords', ["X", "Y"])
+
     if preprocess is None:
         preprocess = {}
     # max gap (in frames) to interpolate across; longer gaps stay NaN. None
@@ -325,10 +374,15 @@ def dask_load_file(filename: str, meta_cfg: dict, sample_rate: float = 200., pre
     if preprocess.get("velocity", {}).get("enabled", False):
         locations = remove_high_velocity(locations, thresh=preprocess['velocity'].get('thresh', 20.), max_gap=max_gap)
 
-    df = create_df(locations, node_locs,
-                   point_scores=point_scores,
-                   instance_scores=instance_scores,
-                   tracking_scores=tracking_scores)
+    df = create_df(
+                    locations, 
+                    node_locs, 
+                    fps = sample_rate,
+                    coords = coords,
+                    point_scores = point_scores,
+                    instance_scores = instance_scores,
+                    tracking_scores = tracking_scores
+                    )
 
     dir_info = os.path.split(filename) # file info
     #exp_info = str.split(dir_info[1],'_') # experiment info
