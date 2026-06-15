@@ -228,7 +228,7 @@ def load_file(filename,sample_rate=200.,preprocess=False):
     poseDF.attrs = {'Path':dir_info[0],'File':dir_info[1],'Id':sub_id,'Type':exp_type,'Date':exp_date,'Trial':exp_trial, 'SampleRate':sample_rate}
     return poseDF
 
-def dask_batch_load_files(file_list: list, sample_rate: float = 200., meta_cfg: dict, preprocess: dict | None = None):
+def dask_batch_load_files(file_list: list, meta_cfg: dict, sample_rate: float = 200., preprocess: dict | None = None):
     """Create a dask dataframe of all data, useful for distributed processing. File metadata are columnar entries. This is handled differently from batch_load_files, as pandas attributes are not partition specific.
 
     Args:
@@ -241,12 +241,56 @@ def dask_batch_load_files(file_list: list, sample_rate: float = 200., meta_cfg: 
     """
 
 
-    ddfs = dd.from_map(dask_load_file, file_list, sample_rate=sample_rate, meta_cfg, preprocess=preprocess)
+    ddfs = dd.from_map(dask_load_file, file_list, sample_rate=sample_rate, preprocess=preprocess, meta_cfg=meta_cfg)
 
     
     return ddfs
 
-def dask_load_file(filename: str,sample_rate: float = 200., meta_cfg: dict, preprocess: dict | None = None):
+def load_sleap(filename: str):
+    filename = Path(filename)
+    with h5py.File(filename, "r") as f:
+        locations = f["tracks"][:].T  # x,y coords of labeled joints
+        point_scores = f["point_scores"][:].T
+        instance_scores = f["instance_scores"][:].T
+        tracking_scores = f["tracking_scores"][:].T
+        node_names = [n.decode() for n in f["node_names"][:]]  # get node names, somewhat redundant given the next line
+        node_locs = dict([(name, i) for i, name in enumerate(node_names)])  # create dictionary of {joint: idx}
+    return {
+            'locations': locations, 
+            'point_scores': point_scores, 
+            'instance_scores': instance_scores, 
+            'tracking_scores': tracking_scores, 
+            'node_names': node_names,
+            'node_locs': node_locs
+            }
+
+def load_anipose(filename: str, n_subjects: int =1):
+    filename = Path(filename)
+    if filename.suffix == '.h5':
+        df = pd.read_hdf(filename)
+        n_frames = df.shape[0]
+        node_names = list(dict.fromkeys(df.columns.get_level_values(1)))
+        node_locs = dict([(name, i) for i, name in enumerate(node_names)])
+        n_nodes = len(node_names)
+        n_coords = len(list(dict.fromkeys(df.columns.get_level_values(2)))) - 1 # likelihood is one coord
+        
+        locations = np.full((n_frames, n_nodes, n_coords, n_subjects), np.nan)
+        point_scores = np.full((n_frames, n_nodes, n_subjects), np.nan)
+        for j, node in enumerate(node_names):
+            locations[:, j, 0, 0] = df.xs((node, "x"), level=(1,2), axis=1).to_numpy().ravel()
+            locations[:, j, 1, 0] = df.xs((node, "y"), level=(1, 2), axis=1).to_numpy().ravel()
+            point_scores[:, j, 0] = df.xs((node, "likelihood"), level=(1,2), axis=1).to_numpy().ravel()
+
+    return {
+        'locations': locations,
+        'point_scores': point_scores,
+        'node_names': node_names,
+        'node_locs': node_locs
+        }
+
+
+
+def dask_load_file(filename: str, meta_cfg: dict, sample_rate: float = 200., preprocess: dict | None = None):
     """Load H5 data into a pandas dataframe for converting to dask dataframe. Compared to load_files, this stores file metadata as columnar instead of as dataframe attributes.
 
     Args:
@@ -307,8 +351,8 @@ def dask_load_file(filename: str,sample_rate: float = 200., meta_cfg: dict, prep
     return df
 
 
-# def load_pickle(fname):
-#     with open(fname, "rb") as f:  # "rb" = read binary
-#         data = pickle.load(f)
-#     return data
+def load_pickle(fname):
+    with open(fname, "rb") as f:  # "rb" = read binary
+        data = pickle.load(f)
+    return data
 
