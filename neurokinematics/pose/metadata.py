@@ -9,7 +9,7 @@ def resolve_file_metadata(filename, meta_cfg):
 
 
 def _from_filename(filename, meta_cfg):
-    name = Path(filename)
+    name = Path(filename).name
     m = re.match(meta_cfg['pattern'], name)
     if not m:
         raise ValueError(
