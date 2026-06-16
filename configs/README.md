@@ -69,7 +69,6 @@ pipeline:
 The spike config contains information relevant to running spike sorting and accessing spike data:
 
 ```yaml
-name: "sample_spike_sorting_cfg"
 rec_type: "openephys"
 sorter: "kilosort4"
 to_compute:
@@ -90,7 +89,6 @@ sample_rate: 30000.
 
 ```
 ### Fields
-- `name` &rarr; config name (superfluous)
 - `rec_type` &rarr; acquisition system used for ephys (redundant in session config)
 - `sorter` &rarr; spike sorter used
 - `to_compute` &rarr; list of SpikeInterface arguments and parameters to compute on sorted units
@@ -156,7 +154,6 @@ The LFP config has details relevant to extracting Open Ephys data for preprocess
 
 ```yaml
 # set all the high-level informaiton for preprocessing lfp
-name: "lfp_preprocessing"
 dtype: float32
 chunking:
   chunk_duration_s: 10.0
@@ -170,7 +167,6 @@ storage_format: "zarr"
 ```
 
 ### Fields
-- `name` &rarr; name of config file (superfluous)
 - `dtype` &rarr; data type for storing processed LFP
 - `chunking.chunk_duration_s` &rarr; duration in seconds to chunk LFP data
 - `chunking.pad_duration_s` &rarr; pad duration in seconds to add to LFP data during chunking
@@ -186,7 +182,6 @@ The multimodal config has details regarding alignment between markerless pose an
 
 ```yaml
 # Sample config for camera alignment
-name: "camera_alignment_cfg"
 camera:
   manufacturer: "flir"
   model: "blackfly_s"
@@ -204,7 +199,6 @@ detection_settings:
 
 ### Fields
 
-- `name` &rarr; name of config (superfluous)
 - `camera.manufacturer` &rarr; name of camera manufacturer for metadata
 - `camera.model` &rarr; name of camera model used in recording video data
 - `acquisition_settings.record_node` &rarr; record node index of Open Ephys channel where strobe was recorded
