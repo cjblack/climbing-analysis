@@ -425,7 +425,7 @@ def load_config(filename: Path | str, config_type: str | None = None):
 
 
     config_raw = load_yaml(file_path)
-    
+
     cfg_mdl = REGISTRY[config_type]
     config = cfg_mdl(**config_raw)
     
@@ -466,6 +466,7 @@ def load_file(file_path: Path | str, method: str = 'pandas'):
         '.yaml':    lambda: load_yaml(file_path),
         '.yml':     lambda: load_yaml(file_path),
         '.npy':     lambda: np.load(file_path, allow_pickle=True),
+        '.h5':      lambda: load_hdf5(file_path, method=method)
     }
 
     loader = dispatch.get(suffix)
@@ -491,4 +492,12 @@ def load_yaml(file_path: Path | str):
     with open(file_path, "r") as f:
         data = yaml.load(f, Loader = yaml.SafeLoader)
 
+    return data
+
+def load_hdf5(file_path: Path | str, method='pandas'):
+    if method == 'pandas':
+        file_path = _require_file(file_path)
+        data = pd.read_hdf(file_path)
+    else:
+        raise ValueError(f"Invalid method '{method}' selected. Please choose valid method: 'pandas'.")
     return data
