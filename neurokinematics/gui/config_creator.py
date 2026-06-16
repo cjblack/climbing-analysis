@@ -47,7 +47,7 @@ TEMPLATES = {
 
     'pose': {
         'pose_format': {
-            'pose_type':   'sleap',
+            'tracker':   'sleap',
             'file_format': 'h5',
             'frame_rate':  200.0,
         },
@@ -68,7 +68,6 @@ TEMPLATES = {
     },
 
     'spikes': {
-        'name':     'my_spike_sorting_cfg',
         'rec_type': 'openephys',
         'sorter':   'kilosort4',
         'to_compute': {
@@ -91,7 +90,6 @@ TEMPLATES = {
     },
 
     'lfp': {
-        'name':          'lfp_preprocessing',
         'dtype':         'float32',
         'chunking': {
             'chunk_duration_s': 10.0,
