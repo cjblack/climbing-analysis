@@ -14,3 +14,9 @@ from .data.session import ExperimentSession
 from .data.subject import ExperimentSubject
 from .data.group import ExperimentGroup
 from . import io
+
+
+# shared API modules
+
+from neurokinematics.registry import load_extractors
+load_extractors()
