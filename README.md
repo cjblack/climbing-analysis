@@ -56,7 +56,10 @@ neurokinematics/
 │   │   └──spikes/              # Spike processing
 │   ├── multi_modal/            # Cross-modal alignment
 │   ├── models/                 # Models for analysing neural and pose data
-│   └── data/                   # Session/data abstractions
+│   ├── stats/                  # Bayesian and frequentist statistical approaches
+│   ├── qc/                     # Quality control for session level data
+│   ├── gui/                    # Graphical User Interface (in development)
+│   └── data/                   # Group/Subject/Session abstractions
 ├── configs/                    # YAML configuration files
 ├── docs/                       # Extended documentation/example figures
 ├── tests/                      # Unit and integration tests
