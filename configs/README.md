@@ -108,7 +108,7 @@ The pose config has data relevant for extracting and preprocessing pose data:
 ```yaml
 # Simple preprocessing config file, only fills missing vals
 pose_format:
-  pose_type: 'sleap'
+  tracker: 'sleap'
   file_format: 'h5'
   frame_rate: 200.
 pose_preprocessing:
@@ -138,7 +138,7 @@ movement_detection:
 ```
 
 ### Fields
-- `pose_format.pose_type` &rarr; software used for markerless pose estimation
+- `pose_format.tracker` &rarr; software used for markerless pose estimation
 - `pose_format.file_format` &rarr; file format of pose data
 - `pose_format.frame_rate` &rarr; frame rate of camera used in original data collection
 - `pose_preprocessing.fill_missing` &rarr; boolean to determine filling of NaN values in pose estimation
