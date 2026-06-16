@@ -1,5 +1,4 @@
 # Config for camera alignment test
-name: "camera_alignment_test_cfg"
 camera:
   manufacturer: "flir"
   model: "blackfly_s"

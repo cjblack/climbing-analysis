@@ -1,5 +1,5 @@
 pose_format:
-  pose_type: 'sleap'
+  tracker: 'sleap'
   file_format: 'h5'
   frame_rate: 200.
 pose_preprocessing:

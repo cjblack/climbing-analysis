@@ -1,4 +1,3 @@
-name: "sample_spike_sorting_cfg"
 rec_type: "openephys" # name of recording format
 sorter: "kilosort4" # name of sorter to be used, ensure this is implemented by spikeinterface
 to_compute:

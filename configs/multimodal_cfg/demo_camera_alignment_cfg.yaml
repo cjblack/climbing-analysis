@@ -1,5 +1,4 @@
 # Sample config for camera alignment
-name: "camera_alignment_cfg"
 camera:
   manufacturer: "flir"
   model: "blackfly_s"

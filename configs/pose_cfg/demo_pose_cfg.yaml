@@ -1,6 +1,6 @@
 # Simple preprocessing config file, only fills missing vals
 pose_format:
-  pose_type: 'sleap'
+  tracker: 'sleap'
   file_format: 'h5'
   frame_rate: 200.
   metadata:

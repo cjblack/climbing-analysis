@@ -1,5 +1,4 @@
 # set all the high-level informaiton for preprocessing lfp
-name: "lfp_preprocessing"
 dtype: float32
 chunking:
   chunk_duration_s: 10.0
