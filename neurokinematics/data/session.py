@@ -71,6 +71,9 @@ from neurokinematics.multi_modal.features import get_movement_aligned_features
 # models
 from neurokinematics.models.registry import MODEL_REGISTRY
 
+# registry
+from neurokinematics.registry import EXTRACT_REGISTRY
+
 
 
 class ExperimentSession:
@@ -296,7 +299,7 @@ class ExperimentSession:
             },
             'pose':{
                 'frame_rate': self.pose_cfg['pose_format']['frame_rate'],
-                'pose_type': self.pose_cfg['pose_format']['pose_type'],
+                'tracker': self.pose_cfg['pose_format']['tracker'],
                 'node_list': self.pose_cfg['movement_detection']['node_list']
             }
         }
@@ -489,6 +492,21 @@ class ExperimentSession:
             self.epoch_spikes(mode)
         elif type == 'lfp':
             self.epoch_lfp(mode)
+    
+    def extract(self, type: str, feature: str, mode: str = 'skip'):
+        
+        extract_func = EXTRACT_REGISTRY[type][feature]
+        save_path = self.dirs[type] / 'results' / feature
+        save_path.mkdir(parents=True, exist_ok=True)
+
+        context = {'dirs': self.dirs}
+
+        if type == 'spikes':
+            pass
+        elif type == 'lfp':
+            pass
+        elif type == 'pose':
+            pass
 
     @log_call(label='pose preprocessing', type='run')
     def run_pose_processing(self, mode: str = "skip"):
@@ -977,7 +995,7 @@ class ExperimentSession:
     def pose_package(self):
         """ Returns name of package used for pose data 
         """
-        return self.metadata['pose']['pose_type']
+        return self.metadata['pose']['tracker']
     
     @property
     def spike_sorter(self):

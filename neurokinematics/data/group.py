@@ -169,6 +169,10 @@ class ExperimentGroup:
     def epoch(self, type: str, mode: str = "skip"):
         for subj in self.subjects:
             subj.epoch(type, mode)
+
+    def extract(self, type: str, feature: str, mode: str = "skip"):
+        for subj in self.subjects:
+            subj.extract(type, feature, mode)
     
     def add_subjects(self, subjects: dict):
         for subj in subjects:

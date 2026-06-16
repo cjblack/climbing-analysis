@@ -230,6 +230,11 @@ class ExperimentSubject:
         for session in tqdm(self.sessions, desc=f"Epoching {self.subject_id} {type}s", total=len(self.sessions), unit='sessions'):
             session.epoch(type, mode)
 
+    def extract(self, type: str, feature: str, mode: str = 'skip'):
+
+        for session in tqdm(self.sessions, desc=f"Extracting {self.subject_id} {type} features", total = len(self.sessions), unit='sessions'):
+            session.extract(type, feature, mode)
+
 
     def _process(self, session, type: str, mode: str = 'skip'):
         with contextlib.redirect_stdout(open(os.devnull,'w')):
