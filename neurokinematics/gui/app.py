@@ -1652,20 +1652,11 @@ class MainWindow(QMainWindow):
         new_project  = QAction("New Project",  self)
         load_project = QAction("Load Project", self)
 
-        
-        
-
         load_sample = QAction("Load Sample Project", self)
         load_sample.triggered.connect(self._load_sample_project)
 
-
-
         new_group   = QAction("New Group",   self)
         load_group  = QAction("Load Group",  self)
-
-        
-        
-
 
         new_subject  = QAction("New Subject",  self)
         load_subject = QAction("Load Subject", self)
@@ -1744,6 +1735,10 @@ class MainWindow(QMainWindow):
         fit_model_action = QAction("Fit Model…", self)
         fit_model_action.triggered.connect(self._open_analysis_dialog)
         analysis_menu.addAction(fit_model_action)
+
+        coordination_action = QAction("Coordination...", self)
+        coordination_action.triggered.connect(self._open_coordination_dialog)
+        analysis_menu.addAction(coordination_action)
 
         tools_menu.addSeparator()
 
@@ -2052,6 +2047,11 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.RightDockWidgetArea, dock)
         dock.setMinimumWidth(500)
 
+    def _open_coordination_dialog(self):
+        from neurokinematics.gui.dialogs import CoordinationDialog
+        dlg = CoordinationDialog(parent=self)
+        dlg.exec()
+        #pass
     def _open_analysis_dialog(self):
         """Open the statistical-modelling dialog from the Tools ▸ Analysis menu.
 

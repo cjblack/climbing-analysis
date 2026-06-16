@@ -982,6 +982,40 @@ class AnalysisDialog(QDialog):
         self.accept()
 
 
+# ── Coordination configuration ─────────────────────────────────────────────────
+class CoordinationDialog(QDialog):
+    """
+    Dialog for configuring and launching a statistical analysis via group.analyse().
+
+    Shows framework / model selectors and an editable YAML parameter editor.
+    On accept, returns (framework, model, params) via self.result.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Extract Coordination Metric")
+        self.setMinimumWidth(560)
+        self.setMinimumHeight(520)
+        #self.group    = group
+        self.result   = None  # (framework, model, params) on accept
+        self._build_ui()
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # ── Data source ──
+        data_group = QGroupBox("Data")
+        data_form  = QFormLayout(data_group)
+        data_form.setSpacing(8)
+
+        # summaries_dir = self.group.dirs.get('summaries', None)
+        # available = []
+        # if summaries_dir:
+        #     from pathlib import Path as _Path
+        #     for p in _Path(summaries_dir).glob("*.parquet"):
+        #         available.append(p.name)
+
 # ── GLM encoder configuration ─────────────────────────────────────────────────
 
 # pose features the encoder can use, in the 'feature_coord' form create_glm_encoder parses
