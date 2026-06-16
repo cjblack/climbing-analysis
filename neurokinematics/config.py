@@ -14,7 +14,6 @@ class _Config(BaseModel):
 
 class SpikeSortingConfig(_Config):
     # required
-    name: str
     probe_manufacturer: str
     probe_id: str
     sample_rate: float
@@ -53,7 +52,6 @@ class SpikeSortingConfig(_Config):
 
 
 class LFPConfig(_Config):
-    name: str
     dtype: str
     chunking: dict = Field(default_factory=dict)
     filters: dict = Field(default_factory=dict)
@@ -69,7 +67,6 @@ class PoseConfig(_Config):
 
 
 class MultiModalConfig(_Config):
-    name: str
     camera: dict = Field(default_factory=dict)
     acquisition_settings: dict = Field(default_factory=dict)
     detection_settings: dict = Field(default_factory=dict)
