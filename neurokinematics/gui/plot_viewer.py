@@ -18,7 +18,13 @@ from PySide6.QtCore import Qt
 # matplotlib backend for embedding in Qt
 import warnings
 import matplotlib
-matplotlib.use('QtAgg')
+try:
+    matplotlib.use('QtAgg')
+except ImportError:
+    # Headless environments (e.g. CI) have no Qt event loop, so switching to the
+    # interactive QtAgg backend fails. Leave the default backend in place so the
+    # module can still be imported for its non-GUI helpers.
+    pass
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
