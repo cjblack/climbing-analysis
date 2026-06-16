@@ -426,9 +426,14 @@ def load_config(filename: Path | str, config_type: str | None = None):
 
     config_raw = load_yaml(file_path)
 
+    # Without a config_type there's no schema to validate against, so return the
+    # raw mapping as loaded (used when loading an arbitrary config by full path).
+    if config_type is None:
+        return config_raw
+
     cfg_mdl = REGISTRY[config_type]
     config = cfg_mdl(**config_raw)
-    
+
     return config.model_dump()
 
 def load_file(file_path: Path | str, method: str = 'pandas'):
