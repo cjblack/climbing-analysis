@@ -1,3 +1,5 @@
+""" DEPRECATED """
+
 """Module for computing coordination metrics.
 
 This module is designed for analyses that examine coordination between node pairs from markerless pose estimation.
