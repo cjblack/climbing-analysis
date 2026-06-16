@@ -81,8 +81,8 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     # call dask batch load - this is lazy
     ddf = dask_batch_load_files(
         file_list,
-        sample_rate=sample_rate,
         meta_cfg = meta_cfg,
+        sample_rate=sample_rate,
         preprocess=preprocessing,
     )
 
