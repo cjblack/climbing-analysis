@@ -104,3 +104,44 @@ def auto_curate(metrics: pd.DataFrame, rules: dict | None = None,
         csv_path = Path(save_path) / "curated_units.csv"
         labels.to_csv(csv_path, index=False)
     return labels, csv_path
+
+
+def read_phy_cluster_groups(phy_folder: Path | str) -> pd.DataFrame:
+    """Read phy curation labels from ``<phy_folder>/cluster_group.tsv``.
+
+    These labels reflect the auto-curation (:func:`auto_curate`) plus any manual
+    phy curation, the latter being authoritative.
+
+    Args:
+        phy_folder (Path | str): Folder containing ``cluster_group.tsv``.
+
+    Returns:
+        pd.DataFrame: Columns ``unit_id`` and ``group`` (``good`` / ``mua`` /
+        ``noise`` / ``unsorted``).
+
+    Raises:
+        FileNotFoundError: If ``cluster_group.tsv`` is not present.
+    """
+    p = Path(phy_folder) / "cluster_group.tsv"
+    if not p.exists():
+        raise FileNotFoundError(f"No cluster_group.tsv in {phy_folder} — curate spikes first.")
+    df = pd.read_csv(p, sep="\t")
+    if "cluster_id" in df.columns:
+        df = df.rename(columns={"cluster_id": "unit_id"})
+    if "KSLabel" in df.columns and "group" not in df.columns:
+        df = df.rename(columns={"KSLabel": "group"})
+    return df[["unit_id", "group"]]
+
+
+def good_unit_ids(phy_folder: Path | str, label: str = "good") -> list:
+    """Unit ids labelled ``good`` (or ``label``) in a session's phy curation.
+
+    Args:
+        phy_folder (Path | str): Folder containing ``cluster_group.tsv``.
+        label (str): Group label to keep. Defaults to ``'good'``.
+
+    Returns:
+        list[int]: Unit ids passing curation.
+    """
+    groups = read_phy_cluster_groups(phy_folder)
+    return [int(u) for u in groups.loc[groups["group"] == label, "unit_id"].tolist()]
