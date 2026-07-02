@@ -6,10 +6,11 @@ pose_format:
   metadata:
     source: 'filename' # 'filename' | 'manifest' | 'sidecar' | 'custom'
     pattern: '(?P<Id>[^_]+)_(?P<Type>[^_]+)_(?P<Date>\d{8})_T(?P<Trial>\d+)' # regex format for filename
-# MANIFEST
+# MANIFEST  (hand-entered metadata in a sidecar CSV — e.g. written by the GUI 'Metadata' dialog)
 # source: 'manifest'
-# path: 'pose/manifest.csv' # columns: file, Id, Type, Date, Trial
-# key: 'file'
+# By default looks for 'pose_metadata.csv' in the data folder; columns: file, Id, Type, Date, Trial.
+# path: 'pose_metadata.csv'  # optional: absolute, or relative to the data folder
+# key: 'file'                # optional: name of the filename column (default 'file')
 
 # SIDECAR
 # source: 'sidecar'
