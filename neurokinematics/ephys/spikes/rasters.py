@@ -10,14 +10,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from neurokinematics.io import save_dataframe
+from neurokinematics.io import load_csv, save_dataframe
 from neurokinematics.data.processed import SpikeRasterProcessed
 
-def get_movement_aligned_rasters(alignment: pd.DataFrame, sorter, save_path: Path | str, storage_format: str = 'pickle'):
+def get_movement_aligned_rasters(alignment: pd.DataFrame | str | Path, sorter, save_path: Path | str, storage_format: str = 'pickle'):
     """Computes and optionally save movement aligned spike rasters (e.g. spike times aligned to movement onset/ movement event windows).
 
     Args:
-        alignment (pd.DataFrame): Dataframe created from events/movement_event_alignment.csv.
+        alignment (pd.DataFrame | str | Path): Movement-event alignment table, or a
+            path to the ``movement_event_alignment.csv`` it was saved to. Loaded
+            with :func:`neurokinematics.io.load_csv` when a path is given.
         sorter (SortingExtractor): Spikeinterface sorting extractor object containing spike times.
         save_path (Path | str): Directory to save aligned raster data to.
         storage_format (str, optional): Format to store raster dataframe as. Options are 'pickle', 'parquet'. Storing with 'parquet' may yield issues, if so, switch to 'pickle'. Defaults to 'pickle'.
@@ -35,6 +37,10 @@ def get_movement_aligned_rasters(alignment: pd.DataFrame, sorter, save_path: Pat
         PosixPath('path/to/outputs/movement_aligned_rasters.pkl')
 
     """
+    # accept a path to the alignment csv as well as a preloaded dataframe
+    if isinstance(alignment, (str, Path)):
+        alignment = load_csv(alignment, method='pandas')
+
     # extract alignment information for creating data frame
     movement_events = alignment['movement_event'].unique() # get unique movement event types - this may differ across analyses
     nodes = alignment['node'].unique() # get unique nodes - this may differ across pose estimation models

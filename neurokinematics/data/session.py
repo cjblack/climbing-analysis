@@ -736,6 +736,16 @@ class ExperimentSession:
                 storage_format = self.lfp_preprocessing_cfg['storage_format']
             )
 
+            # register the output so reloads/GUI know lfp has been processed
+            lfp_output_path = Path(self.lfp_processed.output_path)
+            self._record_session_output({
+                'lfp_data': {
+                    'path': str(lfp_output_path),
+                    'file_type': lfp_output_path.suffix or self.lfp_processed.storage_format,
+                    'attrs': {},
+                }
+            })
+
     def align_video(self, mode:str = "skip"):
         """Align frame captures to ephys data
 
@@ -848,10 +858,13 @@ class ExperimentSession:
             mode (str, optional): Determines whether to epoch data. Options are 'skip, 'overwrite', or 'error'. 'skip' will be able to run if data isn't present, so reloading session will skip automatically. Use 'overwrite' to re-run. Defaults to "skip".
         """
 
+        # phy export lives under <spikes>/<sorter>/phy_output (spike_times.npy etc.)
+        phy_dir = self.dirs['spikes'] / self.spike_sorter / 'phy_output'
+
         # set required files for running alignment that should have been created in the session
         required = [
             self.dirs['alignment'] / 'movement_event_alignment.csv',
-            self.dirs['spikes'] / self.spike_sorter
+            phy_dir
         ]
 
         # indicate missing files
@@ -867,8 +880,8 @@ class ExperimentSession:
         should_run = self._handle_existing_output(expected_output, mode)
         if not should_run:
             return {"exists": True, "path": expected_output}
-        
-        self.sorter = load_phy_sorting(self.dir['spikes'] / self.spike_sorter)
+
+        self.sorter = load_phy_sorting(phy_dir)
         self.spike_raster_obj = get_movement_aligned_rasters(
             alignment = self.dirs['alignment'] / 'movement_event_alignment.csv',
             sorter = self.sorter,
