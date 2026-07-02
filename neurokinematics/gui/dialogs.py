@@ -155,12 +155,31 @@ class SessionDialog(QDialog):
         ("Models",     "models",      "models"),
     ]
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, subject=None):
         super().__init__(parent)
         self.setWindowTitle("Add Session")
         self.setMinimumWidth(520)
         self.result_data = None
+        self._subject = subject
         self._build_ui()
+
+    def _default_session_cfg(self):
+        """Reuse the most recent existing session's config so a new session for a
+        subject defaults to matching configs (the user can still change them).
+
+        Returns the session-config filename, or None when the subject has no
+        prior sessions.
+        """
+        subj = getattr(self, '_subject', None)
+        if subj is None:
+            return None
+        try:
+            sessions = (subj.subject_specs.get('runtime', {}) or {}).get('sessions', [])
+            if sessions:
+                return sessions[-1].get('session_config')
+        except Exception:
+            pass
+        return None
 
     def _build_ui(self):
         from neurokinematics.io import CFG_PATHS
@@ -177,6 +196,10 @@ class SessionDialog(QDialog):
             placeholder=self.DEFAULT_SESSION_CFG,
             start_dir=str(CFG_PATHS.get('session', ''))
         )
+        # if the subject already has sessions, default to the latest one's config
+        self._inherited_cfg = self._default_session_cfg()
+        if self._inherited_cfg:
+            self.session_config.setText(self._inherited_cfg)
         from neurokinematics.gui.settings import get_data_root
         self.ephys_path     = PathField(mode='folder', placeholder="Path to Open Ephys data",
                                         start_dir=get_data_root("ephys"))
@@ -190,6 +213,14 @@ class SessionDialog(QDialog):
         form.addRow("Ephys Data Path:", self.ephys_path)
         form.addRow("Pose Data Path:",  self.pose_path)
         layout.addLayout(form)
+
+        if self._inherited_cfg:
+            hint = QLabel(
+                f"Defaulted to this subject's most recent session config "
+                f"(<code>{self._inherited_cfg}</code>). Change any field below to override.")
+            hint.setWordWrap(True)
+            hint.setObjectName("hint")
+            layout.addWidget(hint)
 
         # ── associated sub-config overrides ──
         cfg_box  = QGroupBox("Associated Configs (override)")
@@ -1268,6 +1299,193 @@ class EncoderDialog(QDialog):
         self.accept()
 
 
+class MultiLimbEncoderDialog(QDialog):
+    """Configure and launch a multi-limb GLM encoder (all limbs -> one unit).
+
+    Predicts a unit's spiking from the kinematics of several limbs jointly, then
+    drops each limb to measure its *unique* cross-validated contribution — the
+    control for "is this unit genuinely bilateral, or just responding to limbs
+    that co-move?". On accept, ``self.result`` holds ``(pose_path, spike_path,
+    params)`` for :func:`neurokinematics.models.glm.compare_limb_contributions`.
+    """
+
+    def __init__(self, session, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Fit Multi-limb Encoder")
+        self.setMinimumWidth(520)
+        self.session = session
+        self.result = None
+        self._stores = _discover_binned_stores(
+            session.dirs.get("pose"), session.dirs.get("spikes"))
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        data_group = QGroupBox("Binned data")
+        data_form = QFormLayout(data_group)
+        self._bin_combo = QComboBox()
+        if self._stores:
+            self._bin_combo.addItems([f"{ms} ms" for ms in self._stores])
+        else:
+            self._bin_combo.addItem("(none — run Bin first)")
+            self._bin_combo.setEnabled(False)
+        self._bin_combo.currentIndexChanged.connect(self._on_bin_changed)
+        data_form.addRow("Bin size:", self._bin_combo)
+        layout.addWidget(data_group)
+
+        # ── Limbs (predictors) + unit (response) ──
+        tg = QGroupBox("Limbs (predictors) & unit")
+        tform = QVBoxLayout(tg)
+        self._nodes_list = QListWidget()
+        self._nodes_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self._nodes_list.setMaximumHeight(110)
+        tform.addWidget(QLabel("Limbs (Ctrl/Shift = multiple; none = all):"))
+        tform.addWidget(self._nodes_list)
+        urow = QHBoxLayout()
+        urow.addWidget(QLabel("Unit:"))
+        self._unit_combo = QComboBox()
+        urow.addWidget(self._unit_combo)
+        urow.addStretch()
+        uw = QWidget(); uw.setLayout(urow)
+        tform.addWidget(uw)
+        layout.addWidget(tg)
+
+        # ── Pose features (applied to every limb) ──
+        feat_group = QGroupBox("Pose features (per limb)")
+        feat_layout = QHBoxLayout(feat_group)
+        self._feat_checks = {}
+        col = QVBoxLayout()
+        for i, feat in enumerate(_ENCODER_FEATURES):
+            cb = QCheckBox(feat)
+            cb.setChecked(feat in ("velocity_x", "velocity_y"))
+            self._feat_checks[feat] = cb
+            col.addWidget(cb)
+            if (i + 1) % 4 == 0:
+                feat_layout.addLayout(col)
+                col = QVBoxLayout()
+        feat_layout.addLayout(col)
+        layout.addWidget(feat_group)
+
+        # ── Optional temporal basis ──
+        self._basis_group = QGroupBox("Temporal basis (lags)")
+        self._basis_group.setCheckable(True)
+        self._basis_group.setChecked(False)
+        bform = QFormLayout(self._basis_group)
+        self._win_min = QDoubleSpinBox()
+        self._win_min.setRange(-2.0, 2.0); self._win_min.setSingleStep(0.02)
+        self._win_min.setDecimals(3); self._win_min.setValue(-0.10)
+        self._win_max = QDoubleSpinBox()
+        self._win_max.setRange(-2.0, 2.0); self._win_max.setSingleStep(0.02)
+        self._win_max.setDecimals(3); self._win_max.setValue(0.20)
+        wr = QHBoxLayout()
+        wr.addWidget(QLabel("from")); wr.addWidget(self._win_min)
+        wr.addWidget(QLabel("to")); wr.addWidget(self._win_max); wr.addWidget(QLabel("s"))
+        ww = QWidget(); ww.setLayout(wr)
+        bform.addRow("Window (rel. spike):", ww)
+        self._n_basis = QSpinBox(); self._n_basis.setRange(1, 15); self._n_basis.setValue(5)
+        bform.addRow("# basis functions:", self._n_basis)
+        self._spacing_combo = QComboBox(); self._spacing_combo.addItems(["linear", "log"])
+        bform.addRow("Spacing:", self._spacing_combo)
+        layout.addWidget(self._basis_group)
+
+        # ── Model ──
+        mg = QGroupBox("Model")
+        mform = QFormLayout(mg)
+        self._family_combo = QComboBox(); self._family_combo.addItems(["Poisson", "Gaussian"])
+        mform.addRow("Family:", self._family_combo)
+        self._alpha_spin = QDoubleSpinBox()
+        self._alpha_spin.setRange(0.0, 10000.0); self._alpha_spin.setDecimals(2)
+        self._alpha_spin.setSingleStep(1.0); self._alpha_spin.setValue(1.0)
+        self._alpha_spin.setToolTip("L2 (ridge) penalty — recommended once the "
+                                    "multi-limb design is wide and collinear.")
+        mform.addRow("Ridge α (0 = none):", self._alpha_spin)
+        self._cv_spin = QSpinBox(); self._cv_spin.setRange(2, 20); self._cv_spin.setValue(5)
+        self._cv_spin.setToolTip("Event-grouped CV folds (needed for the "
+                                 "drop-one-limb unique-contribution comparison).")
+        mform.addRow("CV folds:", self._cv_spin)
+        layout.addWidget(mg)
+
+        layout.addWidget(HDivider())
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Fit")
+        buttons.accepted.connect(self._confirm)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        if self._stores:
+            self._on_bin_changed(0)
+
+    def _current_paths(self):
+        if not self._stores:
+            return None, None
+        ms = list(self._stores.keys())[max(0, self._bin_combo.currentIndex())]
+        return self._stores[ms]
+
+    def _on_bin_changed(self, _idx):
+        pose_path, spike_path = self._current_paths()
+        if pose_path is None:
+            return
+        from neurokinematics.io import load_zarr
+        self._nodes_list.clear()
+        self._unit_combo.clear()
+        try:
+            pose_ds = load_zarr(pose_path, method="xarray")
+            for n in pose_ds.node.values:
+                self._nodes_list.addItem(str(n))
+        except Exception:
+            pass
+        try:
+            spike_ds = load_zarr(spike_path, method="xarray")
+            self._unit_combo.addItems([str(int(u)) for u in spike_ds.unit.values])
+        except Exception:
+            self._unit_combo.setEditable(True)
+
+    def _selected_nodes(self):
+        sel = [i.text() for i in self._nodes_list.selectedItems()]
+        if sel:
+            return sel
+        return [self._nodes_list.item(i).text() for i in range(self._nodes_list.count())]
+
+    def _confirm(self):
+        from neurokinematics.models.glm import build_multilimb_encoder_params
+
+        pose_path, spike_path = self._current_paths()
+        if pose_path is None:
+            QMessageBox.warning(self, "No binned data", "Run 'Bin' to generate stores first.")
+            return
+        nodes = self._selected_nodes()
+        if len(nodes) < 2:
+            QMessageBox.warning(self, "Need ≥ 2 limbs",
+                                "Select at least two limbs — the comparison drops one at a time.")
+            return
+        features = [f for f, cb in self._feat_checks.items() if cb.isChecked()]
+        if not features:
+            QMessageBox.warning(self, "No features", "Select at least one pose feature.")
+            return
+        try:
+            unit = int(self._unit_combo.currentText())
+        except (ValueError, TypeError):
+            QMessageBox.warning(self, "No unit", "Select a valid unit.")
+            return
+        if self._basis_group.isChecked() and self._win_max.value() < self._win_min.value():
+            QMessageBox.warning(self, "Invalid window", "Window end must be ≥ start.")
+            return
+        basis = None
+        if self._basis_group.isChecked():
+            basis = {"window": (self._win_min.value(), self._win_max.value()),
+                     "n_basis": self._n_basis.value(),
+                     "spacing": self._spacing_combo.currentText()}
+        params = build_multilimb_encoder_params(
+            nodes=nodes, unit=unit, features=features,
+            family=self._family_combo.currentText(),
+            n_splits=self._cv_spin.value(), basis=basis, alpha=self._alpha_spin.value())
+        self.result = (pose_path, spike_path, params)
+        self.accept()
+
+
 class DecoderDialog(QDialog):
     """Configure and launch a GLM decoder (population of units -> a movement feature).
 
@@ -1322,6 +1540,11 @@ class DecoderDialog(QDialog):
         # ── Population (units) ──
         units_group = QGroupBox("Population (units)")
         units_layout = QVBoxLayout(units_group)
+        self._good_only = QCheckBox("Use good units only (from curation)")
+        self._good_only.setToolTip("Restrict the population to clusters labelled "
+                                   "'good' in this session's phy cluster_group.tsv.")
+        self._good_only.toggled.connect(self._on_good_only_toggled)
+        units_layout.addWidget(self._good_only)
         self._units_list = QListWidget()
         self._units_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._units_list.setMaximumHeight(140)
@@ -1419,6 +1642,50 @@ class DecoderDialog(QDialog):
                 self._units_list.addItem(str(int(u)))
         except Exception:
             pass
+        if getattr(self, '_good_only', None) and self._good_only.isChecked():
+            self._on_good_only_toggled(True)      # re-apply good-unit selection
+
+    def _good_units(self):
+        """Good unit ids from this session's phy curation, or None if unavailable."""
+        sd = self.session.dirs.get("spikes")
+        if not sd:
+            return None
+        hits = list(Path(sd).glob("*/phy_output/cluster_group.tsv"))
+        if not hits:
+            return None
+        try:
+            from neurokinematics.ephys.spikes.curation import good_unit_ids
+            return set(good_unit_ids(hits[0].parent))
+        except Exception:
+            return None
+
+    def _on_good_only_toggled(self, checked):
+        """Auto-select the curation-approved units in the list when toggled on."""
+        if not checked:
+            self._units_list.clearSelection()
+            return
+        good = self._good_units()
+        if not good:
+            QMessageBox.warning(self, "No curation",
+                                "No 'good' units found (cluster_group.tsv missing or "
+                                "none labelled 'good').")
+            self._good_only.setChecked(False)
+            return
+        self._units_list.clearSelection()
+        n = 0
+        for i in range(self._units_list.count()):
+            it = self._units_list.item(i)
+            try:
+                uid = int(it.text())
+            except ValueError:
+                continue
+            if uid in good:
+                it.setSelected(True)
+                n += 1
+        if n == 0:
+            QMessageBox.warning(self, "No good units in store",
+                                "None of the binned units match the 'good' curation labels.")
+            self._good_only.setChecked(False)
 
     def _selected_units(self):
         sel = [int(i.text()) for i in self._units_list.selectedItems()]
@@ -1613,4 +1880,339 @@ class SpikeQCDialog(QDialog):
     def _confirm(self):
         self.selected_bad = [cid for cid, cb in self._checks.items()
                              if cb.isChecked()]
+        self.accept()
+
+
+class PoseMetadataDialog(QDialog):
+    """Hand-enter per-file pose metadata when there's no parseable source.
+
+    Lists every pose file in the data folder and lets the user fill in
+    ``Id`` / ``Type`` / ``Date`` / ``Trial`` per file. On save it writes a sidecar
+    ``pose_metadata.csv`` (the ``manifest`` source) next to the data, so the
+    values travel with the recordings and re-running doesn't require re-typing.
+
+    Args:
+        files: pose file paths (e.g. from ``find_pose_files``).
+        data_dir: folder to write the manifest into (where the files live).
+        meta_cfg: the ``pose_format.metadata`` block; an optional ``pattern`` is
+            used to pre-fill guesses, and ``path`` / ``key`` locate an existing
+            manifest to edit.
+
+    On accept, ``self.manifest_path`` holds the written CSV path.
+    """
+
+    _COLS = ["File", "Id", "Type", "Date", "Trial"]
+    _FIELDS = ["Id", "Type", "Date", "Trial"]
+
+    def __init__(self, files, data_dir, meta_cfg=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Enter pose metadata")
+        self.setMinimumSize(640, 460)
+        self._files = [Path(f) for f in files]
+        self._data_dir = Path(data_dir)
+        self._meta_cfg = meta_cfg or {}
+        self.manifest_path = None
+        self._build_ui()
+        self._populate()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        header = QLabel(
+            f"{len(self._files)} file(s) in "
+            f"<code>{self._data_dir}</code>. Fill in the metadata for each, "
+            f"then save to <code>{self._manifest_name()}</code>.")
+        header.setWordWrap(True)
+        layout.addWidget(header)
+
+        # ── helper buttons ──
+        tools = QHBoxLayout()
+        if self._meta_cfg.get('pattern'):
+            guess_btn = QPushButton("Guess from filename")
+            guess_btn.setObjectName("secondary")
+            guess_btn.clicked.connect(self._guess_from_pattern)
+            tools.addWidget(guess_btn)
+        fill_btn = QPushButton("Fill down")
+        fill_btn.setObjectName("secondary")
+        fill_btn.setToolTip("Copy the first row's Id / Type / Date to every row")
+        fill_btn.clicked.connect(self._fill_down)
+        tools.addWidget(fill_btn)
+        num_btn = QPushButton("Auto-number trials")
+        num_btn.setObjectName("secondary")
+        num_btn.setToolTip("Set Trial to 1…N in row order")
+        num_btn.clicked.connect(self._auto_number)
+        tools.addWidget(num_btn)
+        tools.addStretch()
+        layout.addLayout(tools)
+
+        # ── table ──
+        self._table = QTableWidget(len(self._files), len(self._COLS))
+        self._table.setHorizontalHeaderLabels(self._COLS)
+        self._table.verticalHeader().setVisible(False)
+        hh = self._table.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.Stretch)
+        for c in range(1, len(self._COLS)):
+            hh.setSectionResizeMode(c, QHeaderView.ResizeToContents)
+        layout.addWidget(self._table)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Save).setText("Save metadata")
+        buttons.accepted.connect(self._save)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    # ── manifest location (mirrors pose.metadata path resolution) ──
+    def _manifest_name(self):
+        from neurokinematics.pose.metadata import DEFAULT_MANIFEST_NAME
+        raw = self._meta_cfg.get('path')
+        return Path(raw).name if raw else DEFAULT_MANIFEST_NAME
+
+    def _manifest_target(self):
+        raw = self._meta_cfg.get('path')
+        if raw:
+            p = Path(raw)
+            return p if p.is_absolute() else self._data_dir / p
+        from neurokinematics.pose.metadata import DEFAULT_MANIFEST_NAME
+        return self._data_dir / DEFAULT_MANIFEST_NAME
+
+    def _populate(self):
+        """Seed rows: filename (read-only) + any existing manifest values."""
+        existing = self._load_existing()
+        for r, f in enumerate(self._files):
+            name_item = QTableWidgetItem(f.name)
+            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(r, 0, name_item)
+            row = existing.get(f.name, {})
+            for c, field in enumerate(self._FIELDS, start=1):
+                self._table.setItem(r, c, QTableWidgetItem(str(row.get(field, ""))))
+
+    def _load_existing(self):
+        """Return {basename: {Id,Type,Date,Trial}} from an existing manifest."""
+        target = self._manifest_target()
+        if not target.exists():
+            return {}
+        try:
+            import pandas as pd
+            key = self._meta_cfg.get('key', 'file')
+            df = pd.read_csv(target, dtype=str).fillna("")
+            if key not in df.columns:
+                return {}
+            return {
+                Path(str(row[key])).name: row
+                for row in df.to_dict('records')
+            }
+        except Exception:
+            return {}
+
+    def _guess_from_pattern(self):
+        import re
+        pattern = self._meta_cfg.get('pattern')
+        if not pattern:
+            return
+        for r, f in enumerate(self._files):
+            m = re.match(pattern, f.name)
+            if not m:
+                continue
+            g = m.groupdict()
+            for c, field in enumerate(self._FIELDS, start=1):
+                if field in g and not self._cell(r, c):
+                    self._table.setItem(r, c, QTableWidgetItem(g[field]))
+
+    def _fill_down(self):
+        for c in range(1, 4):  # Id, Type, Date — not Trial
+            top = self._cell(0, c)
+            if not top:
+                continue
+            for r in range(1, self._table.rowCount()):
+                self._table.setItem(r, c, QTableWidgetItem(top))
+
+    def _auto_number(self):
+        trial_col = self._COLS.index("Trial")
+        for r in range(self._table.rowCount()):
+            self._table.setItem(r, trial_col, QTableWidgetItem(str(r + 1)))
+
+    def _cell(self, r, c):
+        it = self._table.item(r, c)
+        return it.text().strip() if it else ""
+
+    def _save(self):
+        rows = []
+        missing = []
+        for r, f in enumerate(self._files):
+            entry = {"file": f.name}
+            for c, field in enumerate(self._FIELDS, start=1):
+                val = self._cell(r, c)
+                if not val:
+                    missing.append(f"{f.name} → {field}")
+                entry[field] = val
+            rows.append(entry)
+
+        if missing:
+            QMessageBox.warning(
+                self, "Incomplete metadata",
+                "Every file needs all four fields. Missing:\n  - "
+                + "\n  - ".join(missing[:12])
+                + ("\n  …" if len(missing) > 12 else ""))
+            return
+
+        target = self._manifest_target()
+        try:
+            import pandas as pd
+            target.parent.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame(rows, columns=["file", *self._FIELDS]).to_csv(target, index=False)
+        except Exception as e:
+            QMessageBox.critical(self, "Could not save",
+                                 f"Failed to write {target}:\n{e}")
+            return
+
+        self.manifest_path = target
+        self.accept()
+
+
+# ── Event modulation configuration ────────────────────────────────────────────
+
+def _find_movement_rasters(spikes_dir):
+    """Return the movement-aligned rasters .pkl for a session, or None.
+
+    Written by :func:`~neurokinematics.ephys.spikes.rasters.get_movement_aligned_rasters`
+    under ``<spikes>/rasters/movement_aligned_rasters.pkl``.
+    """
+    if not spikes_dir:
+        return None
+    p = Path(spikes_dir) / "rasters" / "movement_aligned_rasters.pkl"
+    return p if p.exists() else None
+
+
+class ModulationDialog(QDialog):
+    """Configure and launch an event-modulation analysis.
+
+    Quantifies whether each unit is significantly modulated around discrete
+    movement epochs (initiation / peak velocity / cessation) using a per-event
+    circular-shift permutation null. Runs on the movement-aligned rasters .pkl.
+    On accept, ``self.result`` holds ``(rasters_path, kwargs)`` where ``kwargs``
+    feeds :func:`neurokinematics.ephys.spikes.modulation.event_modulation`.
+    """
+
+    def __init__(self, session, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Run Event Modulation")
+        self.setMinimumWidth(480)
+        self.session = session
+        self.result = None
+        self._rasters_path = _find_movement_rasters(session.dirs.get("spikes"))
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # ── Source ──
+        src_group = QGroupBox("Movement-aligned rasters")
+        src_form = QFormLayout(src_group)
+        if self._rasters_path is not None:
+            src_form.addRow(QLabel(self._rasters_path.name))
+        else:
+            warn = QLabel("(none — epoch Spikes first)")
+            warn.setObjectName("subheading")
+            src_form.addRow(warn)
+        layout.addWidget(src_group)
+
+        # ── PETH window ──
+        win_group = QGroupBox("PETH window")
+        win_form = QFormLayout(win_group)
+        self._win_min = QDoubleSpinBox()
+        self._win_min.setRange(-5.0, 0.0); self._win_min.setDecimals(3)
+        self._win_min.setSingleStep(0.05); self._win_min.setValue(-0.5)
+        self._win_max = QDoubleSpinBox()
+        self._win_max.setRange(0.0, 5.0); self._win_max.setDecimals(3)
+        self._win_max.setSingleStep(0.05); self._win_max.setValue(0.5)
+        wrow = QHBoxLayout()
+        wrow.addWidget(QLabel("from")); wrow.addWidget(self._win_min)
+        wrow.addWidget(QLabel("to")); wrow.addWidget(self._win_max); wrow.addWidget(QLabel("s"))
+        ww = QWidget(); ww.setLayout(wrow)
+        win_form.addRow("Window:", ww)
+        self._bin_spin = QDoubleSpinBox()
+        self._bin_spin.setRange(1.0, 200.0); self._bin_spin.setDecimals(1)
+        self._bin_spin.setSingleStep(5.0); self._bin_spin.setValue(20.0)
+        win_form.addRow("Bin size (ms):", self._bin_spin)
+        layout.addWidget(win_group)
+
+        # ── Baseline / response windows ──
+        wins_group = QGroupBox("Baseline & response windows (s, rel. event)")
+        wins_form = QFormLayout(wins_group)
+        self._base_min = QDoubleSpinBox(); self._base_min.setRange(-5.0, 5.0)
+        self._base_min.setDecimals(3); self._base_min.setSingleStep(0.05); self._base_min.setValue(-0.5)
+        self._base_max = QDoubleSpinBox(); self._base_max.setRange(-5.0, 5.0)
+        self._base_max.setDecimals(3); self._base_max.setSingleStep(0.05); self._base_max.setValue(-0.1)
+        brow = QHBoxLayout()
+        brow.addWidget(QLabel("from")); brow.addWidget(self._base_min)
+        brow.addWidget(QLabel("to")); brow.addWidget(self._base_max)
+        bw = QWidget(); bw.setLayout(brow)
+        wins_form.addRow("Baseline:", bw)
+        self._resp_min = QDoubleSpinBox(); self._resp_min.setRange(-5.0, 5.0)
+        self._resp_min.setDecimals(3); self._resp_min.setSingleStep(0.05); self._resp_min.setValue(0.0)
+        self._resp_max = QDoubleSpinBox(); self._resp_max.setRange(-5.0, 5.0)
+        self._resp_max.setDecimals(3); self._resp_max.setSingleStep(0.05); self._resp_max.setValue(0.2)
+        rrow = QHBoxLayout()
+        rrow.addWidget(QLabel("from")); rrow.addWidget(self._resp_min)
+        rrow.addWidget(QLabel("to")); rrow.addWidget(self._resp_max)
+        rw = QWidget(); rw.setLayout(rrow)
+        wins_form.addRow("Response:", rw)
+        layout.addWidget(wins_group)
+
+        # ── Test ──
+        test_group = QGroupBox("Significance test")
+        test_form = QFormLayout(test_group)
+        self._shuffle_spin = QSpinBox()
+        self._shuffle_spin.setRange(0, 100000); self._shuffle_spin.setValue(1000)
+        self._shuffle_spin.setToolTip("Circular-shift permutations for the null. "
+                                      "0 = descriptive only (no p-values). 1000 typical.")
+        test_form.addRow("Permutations:", self._shuffle_spin)
+        self._minev_spin = QSpinBox()
+        self._minev_spin.setRange(1, 1000); self._minev_spin.setValue(3)
+        self._minev_spin.setToolTip("Skip (unit, node, epoch) cells with fewer "
+                                    "movement instances than this.")
+        test_form.addRow("Min events / cell:", self._minev_spin)
+        self._fdr_check = QCheckBox("Benjamini-Hochberg FDR across cells")
+        self._fdr_check.setChecked(True)
+        test_form.addRow("", self._fdr_check)
+        self._detrend_check = QCheckBox("Detrend baseline (remove pre-event ramp)")
+        self._detrend_check.setToolTip(
+            "Fit and subtract the baseline-window linear trend before testing, so a "
+            "unit that simply ramps smoothly through the event isn't counted as "
+            "event-locked modulation. Only a departure from the pre-event trend "
+            "counts. Recommended for the offset epoch.")
+        test_form.addRow("", self._detrend_check)
+        layout.addWidget(test_group)
+
+        layout.addWidget(HDivider())
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Run")
+        buttons.accepted.connect(self._confirm)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _confirm(self):
+        if self._rasters_path is None:
+            QMessageBox.warning(self, "No rasters",
+                                "No movement_aligned_rasters.pkl was found.\n"
+                                "Epoch the Spikes (align movements) first.")
+            return
+        if self._win_max.value() <= self._win_min.value():
+            QMessageBox.warning(self, "Invalid window", "Window end must be > start.")
+            return
+        kwargs = dict(
+            window=(self._win_min.value(), self._win_max.value()),
+            bin_size=self._bin_spin.value() / 1000.0,
+            baseline_window=(self._base_min.value(), self._base_max.value()),
+            response_window=(self._resp_min.value(), self._resp_max.value()),
+            detrend_baseline=self._detrend_check.isChecked(),
+            n_shuffle=self._shuffle_spin.value(),
+            min_events=self._minev_spin.value(),
+            fdr=self._fdr_check.isChecked(),
+        )
+        self.result = (self._rasters_path, kwargs)
         self.accept()

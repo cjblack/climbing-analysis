@@ -167,13 +167,18 @@ class PlotViewerPanel(QWidget):
         "── Session ──",
         "Trajectories",
         "Velocity traces",
+        "Interlimb phase",
         "── Spikes ──",
         "Waveforms",
         "Autocorrelograms",
         "Spike rasters",
+        "Event modulation",
+        "Unit limb tuning",
+        "Laterality",
         "── Encoding / Decoding ──",
         "GLM encoder fit",
         "GLM decoder fit",
+        "Multi-limb contributions",
         "── Analysis results ──",
         "Trace plot",
         "Forest plot",
@@ -188,6 +193,16 @@ class PlotViewerPanel(QWidget):
     # spike plots (need a unit selector); rasters also need node + movement event
     SPIKE_PLOTS   = {"Waveforms", "Autocorrelograms", "Spike rasters"}
     RASTER_PLOTS  = {"Spike rasters"}
+    # event-modulation heatmap (needs a node selector + the modulation zarr)
+    MODULATION_PLOTS = {"Event modulation"}
+    # single-unit limb x epoch tuning (needs a unit selector + the modulation zarr)
+    UNIT_TUNING_PLOTS = {"Unit limb tuning"}
+    # population ipsi-vs-contra laterality (needs an epoch selector)
+    LATERALITY_PLOTS = {"Laterality"}
+    # interlimb phase (no selectors; uses the movement-event alignment table)
+    INTERLIMB_PLOTS = {"Interlimb phase"}
+    # per-limb unique contribution from the multi-limb encoder (no selectors)
+    MULTILIMB_PLOTS = {"Multi-limb contributions"}
     # plots that need a trace file
     ANALYSIS_PLOTS = {"Trace plot", "Forest plot", "Posterior plot", "Posterior predictive"}
     # GLM encoder/decoder result plots (need a session source with a models dir)
@@ -245,6 +260,20 @@ class PlotViewerPanel(QWidget):
         event_layout.addStretch()
         form.addRow("Movement event:", self._event_row)
         self._event_row.setVisible(False)
+
+        # modulation-file selector (event modulation / unit tuning / laterality)
+        self._mod_file_row = QWidget()
+        modf_layout = QHBoxLayout(self._mod_file_row)
+        modf_layout.setContentsMargins(0, 0, 0, 0)
+        self._mod_file_combo = QComboBox()
+        self._mod_file_combo.setMinimumWidth(220)
+        self._mod_file_combo.setToolTip("Which event_modulation*.zarr to plot "
+                                        "(newest first).")
+        self._mod_file_combo.currentIndexChanged.connect(self._on_mod_file_changed)
+        modf_layout.addWidget(self._mod_file_combo)
+        modf_layout.addStretch()
+        form.addRow("Modulation file:", self._mod_file_row)
+        self._mod_file_row.setVisible(False)
 
         # unit selector (spike plots) — multi-select
         self._units_row = QWidget()
@@ -322,9 +351,16 @@ class PlotViewerPanel(QWidget):
 
     def _on_source_changed(self, _idx: int):
         """Repopulate selectors for the chosen source and current plot type."""
+        obj = self._source_combo.currentData()
         plot_type = self._plot_combo.currentText()
         if plot_type in self.SPIKE_PLOTS:
             self._refresh_spike_controls()
+        elif plot_type in self.MODULATION_PLOTS or plot_type in self.UNIT_TUNING_PLOTS:
+            self._refresh_mod_files(obj)
+            self._refresh_modulation_controls()
+        elif plot_type in self.LATERALITY_PLOTS:
+            self._refresh_mod_files(obj)
+            self._refresh_laterality_controls()
         else:
             self._refresh_pose_nodes()
 
@@ -362,6 +398,176 @@ class PlotViewerPanel(QWidget):
             return None
         p = Path(sd) / 'rasters' / 'movement_aligned_rasters.pkl'
         return p if p.exists() else None
+
+    def _mod_dir(self, obj):
+        sd = self._spikes_dir(obj)
+        return Path(sd) / 'modulation' if sd else None
+
+    def _list_mod_files(self, obj):
+        """All event_modulation*.zarr stores for a source, newest first."""
+        d = self._mod_dir(obj)
+        if not d or not d.exists():
+            return []
+        return sorted(d.glob('event_modulation*.zarr'),
+                      key=lambda p: p.stat().st_mtime, reverse=True)
+
+    def _refresh_mod_files(self, obj):
+        """Populate the modulation-file selector (newest first)."""
+        self._mod_file_combo.blockSignals(True)
+        self._mod_file_combo.clear()
+        for p in self._list_mod_files(obj):
+            self._mod_file_combo.addItem(p.name, userData=str(p))
+        self._mod_file_combo.blockSignals(False)
+
+    def _modulation_zarr(self, obj):
+        # honour the explicit file selection; fall back to the newest store
+        data = self._mod_file_combo.currentData()
+        if data:
+            p = Path(data)
+            if p.exists():
+                return p
+        files = self._list_mod_files(obj)
+        return files[0] if files else None
+
+    def _on_mod_file_changed(self, _idx: int):
+        """Re-populate node/unit/epoch controls when a different file is chosen."""
+        plot_type = self._plot_combo.currentText()
+        if plot_type in self.MODULATION_PLOTS or plot_type in self.UNIT_TUNING_PLOTS:
+            self._refresh_modulation_controls()
+        elif plot_type in self.LATERALITY_PLOTS:
+            self._refresh_laterality_controls()
+
+    def _refresh_modulation_controls(self):
+        """Populate the node combo and unit list from a session's event_modulation.zarr."""
+        from PySide6.QtCore import Qt as _Qt
+        obj = self._source_combo.currentData()
+        self._node_combo.clear()
+        self._units_list.clear()
+        p = self._modulation_zarr(obj)
+        if p is None:
+            return
+        try:
+            from neurokinematics.io import load_zarr
+            ds = load_zarr(p, method='xarray')
+            self._node_combo.addItems([str(n) for n in ds.node.values])
+            for u in ds.unit.values:
+                item = QListWidgetItem(str(int(u)))
+                item.setData(_Qt.UserRole, int(u))
+                self._units_list.addItem(item)
+        except Exception as e:
+            self._log.log(f"Could not read modulation data: {e}", 'warning')
+
+    def _plot_event_modulation(self, obj):
+        """Population z-scored event-modulation heatmap from event_modulation.zarr."""
+        from neurokinematics.io import load_zarr
+        from neurokinematics.ephys.spikes.plotting import plot_event_modulation
+        p = self._modulation_zarr(obj)
+        if p is None:
+            raise ValueError("No event_modulation.zarr — run 'Event modulation' first.")
+        ds = load_zarr(p, method='xarray')
+        node = self._node_combo.currentText() or None
+        units = self._selected_units() or None     # none selected -> all units
+        fig = plot_event_modulation(ds, node=node, units=units)
+        n_units = len(units) if units else int(ds.dims['unit'])
+        self.canvas_widget.set_figure(fig, vscroll=n_units > 12)
+        self._log.log(
+            f"Event modulation — {node or 'first node'} "
+            f"({len(units) if units else 'all'} units)", 'success')
+
+    def _refresh_laterality_controls(self):
+        """Populate the epoch selector and unit list from event_modulation.zarr."""
+        from PySide6.QtCore import Qt as _Qt
+        obj = self._source_combo.currentData()
+        self._event_combo.clear()
+        self._units_list.clear()
+        p = self._modulation_zarr(obj)
+        if p is None:
+            return
+        try:
+            from neurokinematics.io import load_zarr
+            ds = load_zarr(p, method='xarray')
+            self._event_combo.addItem("all epochs")
+            self._event_combo.addItems([str(e) for e in ds.epoch.values])
+            for u in ds.unit.values:
+                item = QListWidgetItem(str(int(u)))
+                item.setData(_Qt.UserRole, int(u))
+                self._units_list.addItem(item)
+        except Exception as e:
+            self._log.log(f"Could not read modulation data: {e}", 'warning')
+
+    def _plot_laterality(self, obj):
+        """Population ipsi-vs-contra laterality from event_modulation.zarr."""
+        from neurokinematics.io import load_zarr
+        from neurokinematics.ephys.spikes.plotting import plot_laterality
+        p = self._modulation_zarr(obj)
+        if p is None:
+            raise ValueError("No event_modulation.zarr — run 'Event modulation' first.")
+        ds = load_zarr(p, method='xarray')
+        sel = self._event_combo.currentText()
+        epoch = None if (not sel or sel == "all epochs") else sel
+        units = self._selected_units() or None     # none selected -> all units
+        fig = plot_laterality(ds, epoch=epoch, units=units)
+        self.canvas_widget.set_figure(fig, vscroll=False)
+        self._log.log(
+            f"Laterality — epoch {epoch or 'all'} "
+            f"({len(units) if units else 'all'} units)", 'success')
+
+    def _plot_multilimb_contributions(self, obj):
+        """Per-limb unique CV-R² bar from the latest multi-limb encoder run."""
+        import pandas as pd
+        models_dir = getattr(obj, 'dirs', {}).get('models')
+        base = Path(models_dir) / 'glm' / 'multilimb_encoder' if models_dir else None
+        hits = sorted(base.glob('**/limb_contributions.csv')) if (base and base.exists()) else []
+        if not hits:
+            raise ValueError("No limb_contributions.csv — run the 'Multi-limb' encoder first.")
+        csv = max(hits, key=lambda p: p.stat().st_mtime)
+        df = pd.read_csv(csv)
+        drops = df[df['model'] != 'full']
+        full = df.loc[df['model'] == 'full', 'cv_r2']
+        full_r2 = float(full.iloc[0]) if len(full) else float('nan')
+
+        ax = self.canvas_widget.get_ax()
+        labels = drops['dropped'].astype(str).values
+        vals = drops['unique_cv_r2'].values
+        colours = ['#d1495b' if v > 0 else '#999999' for v in vals]
+        ax.bar(range(len(labels)), vals, color=colours)
+        ax.axhline(0, color='0.6', lw=0.8)
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, rotation=45, ha='right')
+        ax.set_ylabel("unique CV R²  (full − drop-limb)")
+        ax.set_title(f"Per-limb unique contribution   (full CV R² = {full_r2:.3f})")
+        for sp in ('top', 'right'):
+            ax.spines[sp].set_visible(False)
+        self.canvas_widget.canvas.draw()
+        self._log.log(f"Multi-limb contributions — {csv.parent.name}", 'success')
+
+    def _plot_interlimb_phase(self, obj):
+        """Interlimb phase polar histograms from movement_event_alignment.csv."""
+        from neurokinematics.pose.interlimb import interlimb_phase, plot_interlimb_phase
+        align_dir = getattr(obj, 'dirs', {}).get('alignment')
+        csv = Path(align_dir) / 'movement_event_alignment.csv' if align_dir else None
+        if csv is None or not csv.exists():
+            raise ValueError("No movement_event_alignment.csv — align movements first.")
+        phases = interlimb_phase(csv)
+        fig = plot_interlimb_phase(phases)
+        self.canvas_widget.set_figure(fig, vscroll=len(phases) > 3)
+        self._log.log(f"Interlimb phase — {len(phases)} limb pairs", 'success')
+
+    def _plot_unit_limb_tuning(self, obj):
+        """Single-unit limb x epoch tuning from event_modulation.zarr."""
+        from neurokinematics.io import load_zarr
+        from neurokinematics.ephys.spikes.plotting import plot_unit_limb_tuning
+        p = self._modulation_zarr(obj)
+        if p is None:
+            raise ValueError("No event_modulation.zarr — run 'Event modulation' first.")
+        ds = load_zarr(p, method='xarray')
+        units = self._selected_units()
+        unit = units[0] if units else int(ds.unit.values[0])
+        if len(units) > 1:
+            self._log.log(f"Unit limb tuning shows one unit — using {unit}.", 'info')
+        fig = plot_unit_limb_tuning(ds, unit)
+        self.canvas_widget.set_figure(fig, vscroll=False)
+        self._log.log(f"Unit limb tuning — unit {unit}", 'success')
 
     def _load_analyzer(self, obj):
         """Load (and cache) the SpikeInterface sorting analyzer for a session."""
@@ -461,6 +667,46 @@ class PlotViewerPanel(QWidget):
                 self._log.log(f"Plot error: {traceback.format_exc()}", 'error')
             return
 
+        if plot_type in self.MODULATION_PLOTS:
+            try:
+                self._plot_event_modulation(obj)
+            except Exception:
+                import traceback
+                self._log.log(f"Plot error: {traceback.format_exc()}", 'error')
+            return
+
+        if plot_type in self.UNIT_TUNING_PLOTS:
+            try:
+                self._plot_unit_limb_tuning(obj)
+            except Exception:
+                import traceback
+                self._log.log(f"Plot error: {traceback.format_exc()}", 'error')
+            return
+
+        if plot_type in self.LATERALITY_PLOTS:
+            try:
+                self._plot_laterality(obj)
+            except Exception:
+                import traceback
+                self._log.log(f"Plot error: {traceback.format_exc()}", 'error')
+            return
+
+        if plot_type in self.INTERLIMB_PLOTS:
+            try:
+                self._plot_interlimb_phase(obj)
+            except Exception:
+                import traceback
+                self._log.log(f"Plot error: {traceback.format_exc()}", 'error')
+            return
+
+        if plot_type in self.MULTILIMB_PLOTS:
+            try:
+                self._plot_multilimb_contributions(obj)
+            except Exception:
+                import traceback
+                self._log.log(f"Plot error: {traceback.format_exc()}", 'error')
+            return
+
         if plot_type in self.SPIKE_PLOTS:
             try:
                 self._plot_spikes(obj, plot_type)
@@ -486,11 +732,9 @@ class PlotViewerPanel(QWidget):
         elif plot_type == "Autocorrelograms":
             self._plot_autocorrelograms(obj, units)
         elif plot_type == "Spike rasters":
-            ax = self.canvas_widget.get_ax()
             node  = self._node_combo.currentText() or None
             event = self._event_combo.currentText() or None
-            self._plot_spike_rasters(obj, ax, units, node, event)
-            self.canvas_widget.canvas.draw()
+            self._plot_spike_rasters(obj, units, node, event)
 
     def _plot_waveforms(self, obj, units):
         import spikeinterface.widgets as sw
@@ -510,10 +754,17 @@ class PlotViewerPanel(QWidget):
         self.canvas_widget.set_figure(fig, vscroll=len(uids) > 4)
         self._log.log(f"Autocorrelograms — units {list(uids)}", 'success')
 
-    def _plot_spike_rasters(self, obj, ax, units, node, event):
-        """Movement-aligned spike rasters from movement_aligned_rasters.pkl."""
+    def _plot_spike_rasters(self, obj, units, node, event, window=(-0.5, 0.5),
+                            bin_size=0.02, smooth_sigma_s=0.03):
+        """Movement-aligned spike rasters with mean smoothed firing rate below.
+
+        Top axes: per-trial spike rasters (one block per unit). Bottom axes: each
+        unit's trial-averaged firing rate (Gaussian-smoothed), colour-matched.
+        """
         import pandas as pd
         import numpy as np
+        import matplotlib.pyplot as plt
+        from scipy.ndimage import gaussian_filter1d
         pkl = self._raster_pkl(obj)
         if pkl is None:
             raise ValueError("No movement_aligned_rasters.pkl — align movements first.")
@@ -525,32 +776,83 @@ class PlotViewerPanel(QWidget):
         if not units:
             units = list(df['unit_id'].unique())[:5]
 
+        fig, (rax, fax) = plt.subplots(
+            2, 1, sharex=True, figsize=(6, 6),
+            gridspec_kw={'height_ratios': [3, 1]})
+
+        bins = np.arange(window[0], window[1] + bin_size, bin_size)
+        centers = bins[:-1] + bin_size / 2
+        sigma_bins = max(smooth_sigma_s / bin_size, 1e-6)
+
         cmap = brand_cmap()
-        positions, colours, yticks, ylabels = [], [], [], []
+        positions, colours, blocks = [], [], []   # blocks: (uid, start, end, n_trials)
         offset = 0
         for i, uid in enumerate(units):
             usub = df[df['unit_id'] == uid]
             colour = cmap(0.5 if len(units) == 1 else i / (len(units) - 1))
             start = offset
-            for arr in usub['spike_raster']:
-                positions.append(np.asarray(arr, dtype=float))
+            spikes_per_trial = [np.asarray(arr, dtype=float) for arr in usub['spike_raster']]
+            for arr in spikes_per_trial:
+                positions.append(arr)
                 colours.append(colour)
                 offset += 1
-            if offset > start:
-                yticks.append((start + offset) / 2.0)
-                ylabels.append(f"unit {uid}")
+            n_trials = len(spikes_per_trial)
+            blocks.append((uid, start, offset, n_trials))
 
+            # trial-averaged, Gaussian-smoothed firing rate for this unit
+            if n_trials:
+                pooled = np.concatenate(spikes_per_trial)
+                counts, _ = np.histogram(pooled, bins=bins)
+                rate = counts / n_trials / bin_size
+                rate = gaussian_filter1d(rate, sigma=sigma_bins, mode='nearest')
+                fax.plot(centers, rate, color=colour, lw=2,
+                         label=f"unit {uid} (n={n_trials})")
+
+        total = offset
         if positions:
-            ax.eventplot(positions, colors=colours,
-                         lineoffsets=list(range(len(positions))), linelengths=0.8)
-        ax.axvline(0, color='gray', ls='--', lw=1, alpha=0.6)
-        ax.set_yticks(yticks)
-        ax.set_yticklabels(ylabels)
-        ax.set_xlabel("Time from movement event (s)")
-        ax.set_ylabel("Unit / trial")
-        ax.set_title(f"Spike rasters — {node or 'all nodes'} / {event or 'all events'}")
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
+            rax.eventplot(positions, colors=colours,
+                          lineoffsets=list(range(total)), linelengths=0.8)
+        rax.axvline(0, color='gray', ls='--', lw=1, alpha=0.6)
+
+        if len(blocks) == 1:
+            # single unit: number the trials on the y-axis
+            uid, start, end, n_trials = blocks[0]
+            step = max(1, int(np.ceil(n_trials / 10)))
+            ticks = list(range(0, n_trials, step))
+            rax.set_yticks(ticks)
+            rax.set_yticklabels([str(tk) for tk in ticks])
+            rax.set_ylabel("trial")
+            rax.set_title(f"Spike rasters — unit {uid} — {node or 'all nodes'} / "
+                          f"{event or 'all events'}  (n = {n_trials} trials)")
+        else:
+            # multiple units: label each block with its unit id + trial count
+            yticks = [(s + e) / 2.0 for (_, s, e, n) in blocks if e > s]
+            ylabels = [f"unit {uid} (n={n})" for (uid, s, e, n) in blocks if e > s]
+            rax.set_yticks(yticks)
+            rax.set_yticklabels(ylabels)
+            rax.set_ylabel("unit / trial")
+            for (_, s, e, _) in blocks[1:]:
+                rax.axhline(s - 0.5, color='0.85', lw=0.6)   # separate unit blocks
+            rax.set_title(f"Spike rasters — {node or 'all nodes'} / {event or 'all events'}  "
+                          f"({total} trials, {len(blocks)} units)")
+        if total:
+            rax.set_ylim(-0.5, total - 0.5)
+        for sp in ('top', 'right'):
+            rax.spines[sp].set_visible(False)
+
+        fax.axvline(0, color='gray', ls='--', lw=1, alpha=0.6)
+        fax.set_xlabel("Time from movement event (s)")
+        fax.set_ylabel("Firing rate (Hz)")
+        fax.set_xlim(window)
+        if len(units) > 1:
+            fax.legend(fontsize=7, ncol=min(len(units), 4), frameon=False)
+        for sp in ('top', 'right'):
+            fax.spines[sp].set_visible(False)
+
+        self.canvas_widget.set_figure(fig, vscroll=False)
+        self._log.log(
+            f"Spike rasters + rate — {node or 'all nodes'} / {event or 'all events'} "
+            f"({len(units)} unit(s))", 'success')
 
     def _plot_glm_fit(self, obj, ax, glm_type='encoder'):
         """Observed vs (cross-validated) GLM-predicted signal over the event window,
@@ -696,12 +998,22 @@ class PlotViewerPanel(QWidget):
     def _on_plot_type_changed(self, plot_type: str):
         is_spike = plot_type in self.SPIKE_PLOTS
         is_raster = plot_type in self.RASTER_PLOTS
+        is_mod = plot_type in self.MODULATION_PLOTS
+        is_tuning = plot_type in self.UNIT_TUNING_PLOTS
+        is_lat = plot_type in self.LATERALITY_PLOTS
         self._trace_row.setVisible(plot_type in self.ANALYSIS_PLOTS)
-        self._node_row.setVisible(plot_type in self.NODE_PLOTS or is_raster)
-        self._event_row.setVisible(is_raster)
-        self._units_row.setVisible(is_spike)
+        self._node_row.setVisible(plot_type in self.NODE_PLOTS or is_raster or is_mod)
+        self._event_row.setVisible(is_raster or is_lat)
+        self._mod_file_row.setVisible(is_mod or is_tuning or is_lat)
+        self._units_row.setVisible(is_spike or is_mod or is_tuning or is_lat)
+        if is_mod or is_tuning or is_lat:
+            self._refresh_mod_files(self._source_combo.currentData())
         if is_spike:
             self._refresh_spike_controls()
+        elif is_mod or is_tuning:
+            self._refresh_modulation_controls()
+        elif is_lat:
+            self._refresh_laterality_controls()
         elif plot_type in self.NODE_PLOTS:
             self._refresh_pose_nodes()
 

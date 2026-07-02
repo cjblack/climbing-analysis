@@ -17,13 +17,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTreeWidget, QTreeWidgetItem, QFileDialog,
     QMessageBox, QSizePolicy, QStackedWidget,
-    QComboBox, QInputDialog, QDockWidget, QFrame
+    QComboBox, QInputDialog, QDockWidget, QFrame, QDialog
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QAction, QFont, QIcon
 
 from neurokinematics.gui.style import (
-    STYLESHEET, PRIMARY, SECONDARY, TEXT, TEXT_DIM, BORDER, BG_LIGHT
+    STYLESHEET, PRIMARY, SECONDARY, TEXT, TEXT_DIM, BORDER, BG_LIGHT, SUCCESS
 )
 
 
@@ -60,6 +60,79 @@ ITEM_PROJECT = 0
 ITEM_GROUP   = 1
 ITEM_SUBJECT = 2
 ITEM_SESSION = 3
+
+
+# ── Session display helpers ────────────────────────────────────────────────────
+
+import re as _re
+from datetime import datetime as _datetime
+
+
+def _session_id_of(sess) -> str:
+    """Session id whether *sess* is a Session object or a bare string."""
+    return sess if isinstance(sess, str) else getattr(sess, 'session_id', str(sess))
+
+
+def _natural_key(s: str):
+    """Numeric-aware split so 'sess2' sorts before 'sess10'."""
+    return [int(t) if t.isdigit() else t.lower()
+            for t in _re.split(r'(\d+)', str(s))]
+
+
+def _session_sort_key(sess):
+    """Order sessions chronologically when the id carries a date, otherwise
+    fall back to a natural (numeric-aware) sort so plain numeric or
+    alphabetical ids still order sensibly. Dated sessions sort ahead of
+    undated ones.
+
+    Recognises YYYYMMDD and YYYY[-_/]MM[-_/]DD anywhere in the id — the
+    project's convention (see configs/pose_cfg metadata pattern). Ambiguous
+    formats like DD-MM-YYYY are intentionally not guessed.
+    """
+    sid = _session_id_of(sess)
+    m = _re.search(r'(\d{4})[-_/]?(\d{2})[-_/]?(\d{2})', sid)
+    if m:
+        try:
+            dt = _datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            return (0, dt.timestamp(), _natural_key(sid))
+        except ValueError:
+            pass
+    return (1, 0.0, _natural_key(sid))
+
+
+# (output key written to session_outputs, display name, badge letter) in display
+# order. The keys must match what each processing step actually registers:
+# pose -> 'pose_data', spike sorting -> 'sorting_analyzer', lfp -> 'lfp_data'.
+_SESSION_MODALITIES = (
+    ('pose_data',        'pose',   'P'),
+    ('sorting_analyzer', 'spikes', 'S'),
+    ('lfp_data',         'lfp',    'L'),
+)
+
+
+def _session_status(sess) -> tuple[str, str, bool]:
+    """Compact processed-state for a session, read from its in-memory
+    ``session_outputs`` (populated on load).
+
+    Returns ``(badge, tooltip, any_done)``. The badge is a fixed three-slot
+    indicator like ``P · L`` — a letter means that modality is processed, ``·``
+    means not yet — so all three modalities read at a glance without the verbose
+    ``[pose, spikes]`` text. The tooltip spells it out on hover.
+    """
+    outputs = getattr(sess, 'session_outputs', {}) or {}
+    slots, done, todo = [], [], []
+    for key, name, letter in _SESSION_MODALITIES:
+        if key in outputs:
+            slots.append(letter)
+            done.append(name)
+        else:
+            slots.append('·')
+            todo.append(name)
+    badge   = ' '.join(slots)
+    tooltip = ("Processed: " + ", ".join(done)) if done else "Unprocessed"
+    if done and todo:
+        tooltip += "  •  pending: " + ", ".join(todo)
+    return badge, tooltip, bool(done)
 
 
 # ── Welcome panel ─────────────────────────────────────────────────────────────
@@ -861,10 +934,13 @@ class SessionPanel(DetailPanel):
                     lambda mode, p=process_type: self.session.process(p, mode)
                 ),
             }
-            # pose gets a 'Quality' action: raw-vs-processed what-if inspector
+            # pose gets a 'Quality' action: raw-vs-processed what-if inspector,
+            # and a 'Metadata' action: hand-enter per-file metadata (sidecar CSV)
             if process_type == 'pose':
                 actions.append("Quality")
                 fn_map["Quality"] = self._inspect_pose
+                actions.append("Metadata")
+                fn_map["Metadata"] = self._edit_pose_metadata
             if inspectable:
                 actions.append("Inspect")
                 fn_map["Inspect"] = lambda p=data_path, l=label: self._inspect(p, l)
@@ -1018,6 +1094,17 @@ class SessionPanel(DetailPanel):
         section.add_widget(self._make_op_row(
             label="Decoder", done=dec_done,
             actions=["Fit"], fn_map={"Fit": self._open_decoder_dialog}))
+
+        mlm_done = bool(glm_dir and (glm_dir / 'multilimb_encoder').exists())
+        section.add_widget(self._make_op_row(
+            label="Multi-limb", done=mlm_done,
+            actions=["Fit"], fn_map={"Fit": self._open_multilimb_dialog}))
+
+        mod_done = bool(spikes_dir
+                        and (Path(spikes_dir) / 'modulation' / 'event_modulation.zarr').exists())
+        section.add_widget(self._make_op_row(
+            label="Event modulation", done=mod_done,
+            actions=["Run"], fn_map={"Run": self._open_modulation_dialog}))
         return section
 
     def _current_pre_window(self) -> float:
@@ -1101,6 +1188,50 @@ class SessionPanel(DetailPanel):
         self._run_in_thread(
             lambda: create_glm_decoder(pose_path, spike_path, params, save_path),
             self.log)
+
+    def _open_multilimb_dialog(self):
+        """Configure and run a multi-limb encoder (drop-one-limb unique contribution)."""
+        from neurokinematics.gui.dialogs import MultiLimbEncoderDialog
+        from neurokinematics.models.glm import compare_limb_contributions
+
+        dlg = MultiLimbEncoderDialog(self.session, parent=self)
+        if dlg.exec() != MultiLimbEncoderDialog.Accepted or dlg.result is None:
+            return
+        pose_path, spike_path, params = dlg.result
+        save_path = getattr(self.session, 'dirs', {}).get('models')
+        self.log.log(
+            f"Multi-limb encoder: {len(params['pose']['nodes'])} limbs → "
+            f"unit {params['spikes']['unit'][0]} (drop-one CV)…", 'info')
+        self._run_in_thread(
+            lambda: compare_limb_contributions(pose_path, spike_path, params, save_path),
+            self.log)
+
+    def _open_modulation_dialog(self):
+        """Configure and run an event-modulation analysis on the movement rasters."""
+        from datetime import datetime
+        import pandas as pd
+        from neurokinematics.gui.dialogs import ModulationDialog
+        from neurokinematics.ephys.spikes.modulation import event_modulation
+
+        dlg = ModulationDialog(self.session, parent=self)
+        if dlg.exec() != ModulationDialog.Accepted or dlg.result is None:
+            return
+        rasters_path, kwargs = dlg.result
+        spikes_dir = getattr(self.session, 'dirs', {}).get('spikes')
+        save_path = Path(spikes_dir) / 'modulation' if spikes_dir else None
+        # timestamped store so repeated runs (e.g. with/without detrend) coexist
+        filename = f"event_modulation_{datetime.now():%Y%m%d_%H%M%S}.zarr"
+        self.log.log(
+            f"Running event modulation: window={kwargs['window']} "
+            f"bin={kwargs['bin_size'] * 1000:.0f}ms shuffles={kwargs['n_shuffle']} "
+            f"detrend={kwargs['detrend_baseline']} → {filename}…", 'info')
+
+        def _run_mod():
+            rasters_df = pd.read_pickle(rasters_path)
+            return event_modulation(rasters_df, save_path=save_path,
+                                    filename=filename, **kwargs)
+
+        self._run_in_thread(_run_mod, self.log)
 
     def _run_qc(self):
         """Run QC for this session and show the report in a dock."""
@@ -1319,6 +1450,46 @@ class SessionPanel(DetailPanel):
                                 on_rerun=self._rerun_pose, parent=self)
         dlg.exec()
 
+    def _edit_pose_metadata(self):
+        """Hand-enter per-file pose metadata into a sidecar CSV manifest.
+
+        For data where Id/Type/Date/Trial can't be parsed from the filename, this
+        opens a table of every pose file, writes the entered values to
+        ``pose_metadata.csv`` in the data folder, and switches the pose config's
+        metadata source to ``manifest`` so the pipeline reads it.
+        """
+        from neurokinematics.pose.inspect import find_pose_files
+        from neurokinematics.gui.dialogs import PoseMetadataDialog
+
+        data_path = getattr(self.session, 'pose_data_path', None)
+        cfg = getattr(self.session, 'pose_cfg', None) or {}
+        meta_cfg = (cfg.get('pose_format', {}) or {}).get('metadata', {}) or {}
+        file_format = (cfg.get('pose_format', {}) or {}).get('file_format', 'h5')
+
+        files = find_pose_files(data_path, file_format)
+        if not files:
+            QMessageBox.warning(
+                self, "Pose Metadata",
+                "No raw pose data found for this session.\n\n"
+                "Link the pose data folder before entering metadata.")
+            return
+
+        dlg = PoseMetadataDialog(files, data_path, meta_cfg=meta_cfg, parent=self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        # point the pose config at the manifest we just wrote, and persist
+        pf = cfg.setdefault('pose_format', {})
+        pf['metadata'] = {'source': 'manifest'}
+        try:
+            if hasattr(self.session, '_save_session_config'):
+                self.session._save_session_config()
+        except Exception as e:
+            self.log.log(f"(pose metadata source not persisted: {e})", 'warning')
+        self.log.log(
+            f"Saved pose metadata to {dlg.manifest_path} "
+            f"(source set to 'manifest').", 'success')
+
     def _rerun_pose(self, thresh, max_gap, remove_velocity, vel_thresh):
         """Apply the previewed settings to the pose cfg and re-process (overwrite)."""
         cfg = getattr(self.session, 'pose_cfg', None)
@@ -1346,7 +1517,7 @@ class SessionPanel(DetailPanel):
                   lambda mode: self.session.process('pose', mode))('overwrite')
 
     # actions that don't need a mode selector
-    _NO_MODE_ACTIONS = {"Inspect", "View", "Quality", "Bin", "Fit"}
+    _NO_MODE_ACTIONS = {"Inspect", "View", "Quality", "Bin", "Fit", "Run"}
 
     def _make_op_row(self, label: str, done: bool, actions: list, fn_map: dict) -> QWidget:
         """
@@ -1483,7 +1654,8 @@ class RelationshipsPanel(QWidget):
         item.setForeground(0, self._colour('#c084fc'))
         item.setFont(0, self._bold_font())
 
-        sessions = getattr(subj, 'sessions', None) or []
+        sessions = sorted((getattr(subj, 'sessions', None) or []),
+                          key=_session_sort_key)
         if not sessions:
             empty = QTreeWidgetItem(item)
             empty.setText(0, "    no sessions")
@@ -1491,17 +1663,13 @@ class RelationshipsPanel(QWidget):
             return
 
         for sess in sessions:
-            sess_id = getattr(sess, 'session_id', str(sess))
-            outputs = getattr(sess, 'session_outputs', {})
-            tags    = []
-            if 'pose_data'     in outputs: tags.append("pose")
-            if 'spike_sorting' in outputs: tags.append("spikes")
-            if 'lfp_data'      in outputs: tags.append("lfp")
-            tag_str = f"  [{', '.join(tags)}]" if tags else "  [unprocessed]"
-            colour  = SUCCESS if tags else TEXT_DIM
+            sess_id          = _session_id_of(sess)
+            badge, tip, done = _session_status(sess)
+            colour           = SUCCESS if done else TEXT_DIM
 
             s = QTreeWidgetItem(item)
-            s.setText(0, f"    📅  {sess_id}{tag_str}")
+            s.setText(0, f"    📅  {sess_id}   {badge}")
+            s.setToolTip(0, f"{sess_id} — {tip}")
             s.setForeground(0, self._colour(colour))
 
     def _on_item_clicked(self, item: QTreeWidgetItem, _col: int):
@@ -1795,12 +1963,17 @@ class MainWindow(QMainWindow):
         subj_item.setData(0, Qt.UserRole, (ITEM_SUBJECT, subj))
         subj_item.setForeground(0, QBrush(QColor("#e8e6f0")))
 
-        for sess in (getattr(subj, 'sessions', None) or []):
-            sess_id   = sess if isinstance(sess, str) else getattr(sess, 'session_id', str(sess))
-            sess_item = QTreeWidgetItem(subj_item)
-            sess_item.setText(0, f"📅  {sess_id}")
+        sessions = sorted((getattr(subj, 'sessions', None) or []),
+                          key=_session_sort_key)
+        for sess in sessions:
+            sess_id           = _session_id_of(sess)
+            badge, tip, done  = _session_status(sess)
+            colour            = SUCCESS if done else "#8e8aaa"
+            sess_item         = QTreeWidgetItem(subj_item)
+            sess_item.setText(0, f"📅  {sess_id}   {badge}")
+            sess_item.setToolTip(0, f"{sess_id} — {tip}")
             sess_item.setData(0, Qt.UserRole, (ITEM_SESSION, sess))
-            sess_item.setForeground(0, QBrush(QColor("#8e8aaa")))
+            sess_item.setForeground(0, QBrush(QColor(colour)))
 
         subj_item.setExpanded(True)
         return subj_item
@@ -2508,7 +2681,7 @@ class MainWindow(QMainWindow):
 
     def _add_session_to_subject(self, subj):
         from neurokinematics.gui.dialogs import SessionDialog
-        dlg = SessionDialog(self)
+        dlg = SessionDialog(self, subject=subj)
         if dlg.exec() == SessionDialog.Accepted and dlg.result_data:
             try:
                 subj.add_sessions([dlg.result_data])
@@ -2878,13 +3051,19 @@ class MainWindow(QMainWindow):
                 subject_folder = spec_path.parent
                 try:
                     subject = ExperimentSubject.from_existing(subject_folder)
-                except Exception:
-                    with open(spec_path) as f:
-                        spec = yaml.safe_load(f)
+                except Exception as e:
+                    # from_existing() failed — surface *why* instead of silently
+                    # rebuilding. When we do rebuild, target the SAME existing
+                    # project (…/Subjects/<id>/subject_spec.yaml -> project root),
+                    # so we don't spawn a nested 'NK' project inside it.
+                    self.log.log(
+                        f"Could not reload subject from {subject_folder} "
+                        f"({e}); rebuilding from spec.", 'warning')
+                    project_root = spec_path.parents[2]
                     subject = ExperimentSubject(
                         subject_specs=str(spec_path),
-                        project_path=spec_path.parent.parent.parent,  # Subjects/ -> project root
-                        name='NK'   # default project name — never the subject id
+                        project_path=project_root.parent,
+                        name=project_root.name,
                     )
 
             existing = self._find_loaded_item('subject', subject.subject_id)
