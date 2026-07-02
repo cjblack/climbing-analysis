@@ -547,14 +547,36 @@ def create_glm_decoder(pose_ds: str | Path | xr.Dataset, spike_ds: str | Path | 
         target_da = target_da.sel(coord=pose_coord)
     sy = target_da.values.reshape(-1)
 
+    # optional co-movement control: regress the same feature on another limb out of
+    # the target, so we decode the part of (e.g.) ipsilateral speed that is NOT
+    # shared with the contralateral limb — the residual.
+    partial_node = params.get("pose", {}).get("partial_out_node")
+    cy = None
+    if partial_node:
+        cov_da = pose_sub[pose_feature].sel(node=partial_node)
+        if pose_coord is not None:
+            cov_da = cov_da.sel(coord=pose_coord)
+        cy = cov_da.values.reshape(-1)
+
     valid_flat = valid.values.reshape(-1)
     finite = np.isfinite(X).all(axis=1) & np.isfinite(sy)
+    if cy is not None:
+        finite = finite & np.isfinite(cy)
 
     keep = valid_flat & finite
     X = X.loc[keep]
     sy = sy[keep]
     event_idx = event_idx[keep]
     time_idx = time_idx[keep]
+
+    if cy is not None:
+        # residualise sy on [1, cy]: remove the linear component shared with the
+        # partial-out limb; decode only the orthogonal (independent) part.
+        cyk = cy[keep]
+        A = np.column_stack([np.ones_like(cyk), cyk])
+        beta, *_ = np.linalg.lstsq(A, sy, rcond=None)
+        sy = sy - A @ beta
+        attrs['partial_out_node'] = str(partial_node)
 
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(scaler.fit_transform(X), columns = X.columns, index = X.index)
@@ -668,7 +690,7 @@ def build_encoder_params(node, unit, features, family: str = "Poisson",
 def build_decoder_params(node, units, target, family: str = "Gaussian",
                          n_splits: int = 5, lag: dict | None = None, alpha: float = 0.0,
                          smoothing_s: float = 0.0, all_events: bool = False,
-                         n_shuffle: int = 0):
+                         n_shuffle: int = 0, partial_out_node: str | None = None):
     """Assemble a params dict for :func:`create_glm_decoder`.
 
     A decoder regresses a movement feature on a *population* of units — i.e. "can
@@ -717,6 +739,8 @@ def build_decoder_params(node, units, target, family: str = "Gaussian",
         params["spikes"]["smoothing_s"] = float(smoothing_s)
     if all_events:
         params["pose"]["all_events"] = True
+    if partial_out_node:
+        params["pose"]["partial_out_node"] = str(partial_out_node)
     if alpha and alpha > 0:
         params["regularization"] = {"alpha": float(alpha)}
     if n_shuffle and n_shuffle > 0:
@@ -932,3 +956,480 @@ def build_glm_dataset(outputs:dict, event_ids = None, attrs = None, save_path: s
         )
 
     return ds
+
+
+# ── Multi-limb encoder: do limbs contribute *uniquely* (vs co-movement)? ──────
+
+def build_multilimb_encoder_params(nodes, unit, features, family: str = "Poisson",
+                                   n_splits: int = 5, basis: dict | None = None,
+                                   alpha: float = 0.0):
+    """Params for :func:`create_multilimb_encoder` / :func:`compare_limb_contributions`.
+
+    A multi-limb encoder predicts one unit's spiking from the kinematics of **all**
+    ``nodes`` simultaneously. Dropping a limb and comparing cross-validated fit
+    (see :func:`compare_limb_contributions`) tests whether that limb adds *unique*
+    predictive power — i.e. whether apparent bilateral tuning survives controlling
+    for the co-movement of the other limbs.
+
+    Args:
+        nodes (list): Limbs whose kinematics enter the design (e.g. all four paws).
+        unit (int | list): Unit id to model.
+        features (list): Pose features per limb, e.g. ``['velocity_x','velocity_y']``.
+        family (str): GLM family (default ``'Poisson'``).
+        n_splits (int): Event-grouped CV folds (default 5; needed for the drop-one
+            comparison to be meaningful).
+        basis (dict | None): Optional raised-cosine temporal basis (``window``,
+            ``n_basis``, ``spacing``).
+        alpha (float): L2 (ridge) penalty; recommended once the design is wide.
+
+    Returns:
+        dict: params consumable by the multi-limb encoder functions.
+    """
+    units = list(unit) if isinstance(unit, (list, tuple)) else [unit]
+    params = {
+        "type": "multilimb_encoder",
+        "family": family,
+        "pose": {"nodes": list(nodes), "features": list(features)},
+        "spikes": {"unit": units, "features": ["spike_counts"]},
+    }
+    if basis:
+        params["pose"]["basis"] = {
+            "window": list(basis.get("window", (0.0, 0.0))),
+            "n_basis": int(basis.get("n_basis", 5)),
+            "spacing": basis.get("spacing", "linear"),
+        }
+    if alpha and alpha > 0:
+        params["regularization"] = {"alpha": float(alpha)}
+    if n_splits:
+        params["cv"] = {"n_splits": int(n_splits)}
+    return params
+
+
+def _multilimb_feature_array(ds, node, feat):
+    """Per-event feature array (event, time_bin) for one node, parsing 'feat_coord'."""
+    if '_' in feat:
+        name, coord = feat.split('_', 1)
+        da = ds[name].sel(node=node)
+        if 'coord' in da.dims:
+            da = da.sel(coord=coord)
+        return da
+    return ds[feat].sel(node=node)
+
+
+def _build_multilimb_design(pose_sub, nodes, features, basis_cfg, bin_size):
+    """Design matrix with one column per (limb, feature) — or (limb, feature, basis).
+
+    Returns ``(X, limb_cols, basis_meta)`` where ``limb_cols[node]`` lists that
+    limb's columns (used to drop a limb for the unique-contribution comparison).
+    """
+    cols, limb_cols, basis_meta = {}, {str(n): [] for n in nodes}, None
+    if basis_cfg:
+        offsets = offsets_from_window(basis_cfg.get('window', (0.0, 0.0)), bin_size)
+        basis = raised_cosine_basis(offsets, n_basis=basis_cfg.get('n_basis', 5),
+                                    spacing=basis_cfg.get('spacing', 'linear'))
+        for n in nodes:
+            for feat in features:
+                arr = _multilimb_feature_array(pose_sub, n, feat).values
+                design = lagged_feature_design(arr, offsets, basis)
+                for k in range(design.shape[2]):
+                    c = f"{n}__{feat}__b{k}"
+                    cols[c] = design[:, :, k].reshape(-1)
+                    limb_cols[str(n)].append(c)
+        basis_meta = {'window': list(basis_cfg.get('window', (0.0, 0.0))),
+                      'n_basis': int(basis.shape[1]),
+                      'spacing': basis_cfg.get('spacing', 'linear')}
+    else:
+        for n in nodes:
+            for feat in features:
+                arr = _multilimb_feature_array(pose_sub, n, feat).values
+                c = f"{n}__{feat}"
+                cols[c] = arr.reshape(-1)
+                limb_cols[str(n)].append(c)
+    return pd.DataFrame(cols), limb_cols, basis_meta
+
+
+def create_multilimb_encoder(pose_ds, spike_ds, params: dict | None = None,
+                             save_path: str | Path | None = None):
+    """Encode one unit's spikes from the kinematics of *all* limbs jointly.
+
+    Unlike :func:`create_glm_encoder` (which masks to one reference limb's events),
+    this uses every movement event and stacks per-limb feature columns, so the fit
+    partials out the shared (co-)movement: a limb's coefficients reflect its
+    contribution *beyond* the other limbs. Returns ``(model, results, outputs)``.
+    """
+    params = params or {}
+    if isinstance(pose_ds, (str, Path)):
+        pose_ds = Path(pose_ds)
+        if pose_ds.suffix != '.zarr':
+            raise ValueError('Accepted file formats are: ".zarr".')
+        pose_ds = load_zarr(pose_ds, method='xarray')
+    if isinstance(spike_ds, (str, Path)):
+        spike_ds = Path(spike_ds)
+        if spike_ds.suffix != '.zarr':
+            raise ValueError('Accepted file formats are: ".zarr".')
+        spike_ds = load_zarr(spike_ds, method='xarray')
+
+    nodes = params.get("pose", {}).get("nodes", [str(n) for n in pose_ds.node.values])
+    features = params.get("pose", {}).get("features", ["velocity_x", "velocity_y"])
+    basis_cfg = params.get("pose", {}).get("basis", None)
+    family = params.get("family", "Poisson")
+    spike_feature = params.get("spikes", {}).get("features", ["spike_counts"])[0]
+    unit = params.get("spikes", {}).get("unit", [0])
+    unit = unit[0] if isinstance(unit, (list, tuple)) else unit
+    time_bins = spike_ds.time_bin.values
+    bin_size = float(np.median(np.diff(time_bins)))
+
+    reg = params.get('regularization') or {}
+    alpha = float(reg.get('alpha', 0.0) or 0.0) if isinstance(reg, dict) else float(reg or 0.0)
+
+    X, limb_cols, basis_meta = _build_multilimb_design(pose_ds, nodes, features, basis_cfg, bin_size)
+
+    spikes = spike_ds[spike_feature].sel(unit=unit)
+    n_events, n_bins = spikes.shape
+    event_idx = np.repeat(np.arange(n_events), n_bins)
+    time_idx = np.tile(np.arange(n_bins), n_events)
+
+    valid = (pose_ds.valid.fillna(False).astype(bool) & spike_ds.valid.fillna(False).astype(bool))
+    sy = spikes.values.reshape(-1)
+    valid_flat = valid.values.reshape(-1)
+    finite = np.isfinite(X).all(axis=1).values & np.isfinite(sy)
+    keep = valid_flat & finite
+
+    X = X.loc[keep]
+    sy = sy[keep]
+    event_idx = event_idx[keep]
+    time_idx = time_idx[keep]
+
+    scaler = StandardScaler()
+    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns, index=X.index)
+    X_model = sm.add_constant(X_scaled, has_constant="add")
+
+    if alpha and alpha > 0:
+        fitted = _fit_linear_model(sy, X_model, family, alpha=alpha)
+    else:
+        # fit statsmodels directly on the DataFrame so coefficients keep their
+        # (limb, feature) names
+        fitted = sm.GLM(sy, X_model, family=getattr(sm.families, family)()).fit()
+    model = results = fitted
+    insample_pred = np.asarray(fitted.predict(X_model))
+
+    params['packages'] = {'statsmodels': sm_version, 'scipy': scipy_version,
+                          'sklearn': sk_version, 'neurokinematics': nk_version}
+    params['metrics'] = {} if alpha > 0 else {'aic': float(results.aic),
+                                              'log_likelihood': float(results.llf)}
+    if alpha > 0:
+        params['metrics']['regularization_alpha'] = alpha
+    predicted = _apply_cv(params, X_model, sy, family, event_idx, insample_pred, alpha=alpha)
+
+    attrs = {
+        "model_type": "multilimb_encoder", "unit": unit, "nodes": list(nodes),
+        "features": {"pose": list(features), "spikes": spike_feature},
+        "limb_columns": {k: v for k, v in limb_cols.items()},
+    }
+    if basis_meta:
+        attrs["basis"] = basis_meta
+    outputs = {'predicted': predicted, 'observed': sy, 'event_idx': event_idx,
+               'time_idx': time_idx, 'time_bins': time_bins, 'attrs': attrs, 'params': params}
+
+    if save_path:
+        save_path = Path(save_path)
+        created_on = datetime.now().strftime('%Y%m%d_%H_%M_%S')
+        save_path = save_path / 'glm' / 'multilimb_encoder' / f'unit_{unit}_{created_on}'
+        save_glm_results(model, results, outputs, params, save_path)
+
+    return model, results, outputs
+
+
+def compare_limb_contributions(pose_ds, spike_ds, params, save_path=None):
+    """Unique cross-validated contribution of each limb (full vs drop-one-limb).
+
+    Fits the full multi-limb encoder, then refits dropping each limb in turn;
+    ``unique_cv_r2 = cv_r2(full) - cv_r2(drop_limb)`` is how much predictive power
+    that limb adds beyond the others. A limb whose apparent tuning is only
+    co-movement collapses to ~0; a genuinely encoded limb stays positive.
+
+    Returns ``(fitted, summary)`` — fitted models per set and a summary DataFrame
+    (``model``, ``dropped``, ``limbs``, ``cv_r2``, ``unique_cv_r2``).
+    """
+    if isinstance(pose_ds, (str, Path)):
+        pose_ds = load_zarr(Path(pose_ds), method='xarray')
+    if isinstance(spike_ds, (str, Path)):
+        spike_ds = load_zarr(Path(spike_ds), method='xarray')
+
+    nodes = list(params.get("pose", {}).get("nodes", [str(n) for n in pose_ds.node.values]))
+    fitted, rows = {}, []
+
+    _, _, full = create_multilimb_encoder(pose_ds, spike_ds, deepcopy(params))
+    full_r2 = full['params'].get('metrics', {}).get('cv_r2')
+    fitted['full'] = full
+    rows.append({'model': 'full', 'dropped': None, 'limbs': ", ".join(map(str, nodes)),
+                 'cv_r2': full_r2, 'unique_cv_r2': float('nan')})
+
+    for n in nodes:
+        keep_nodes = [x for x in nodes if x != n]
+        if not keep_nodes:
+            continue
+        p = deepcopy(params)
+        p['pose']['nodes'] = keep_nodes
+        _, _, out = create_multilimb_encoder(pose_ds, spike_ds, p)
+        r2 = out['params'].get('metrics', {}).get('cv_r2')
+        fitted[f'drop_{n}'] = out
+        unique = (full_r2 - r2) if (full_r2 is not None and r2 is not None
+                                    and np.isfinite(full_r2) and np.isfinite(r2)) else float('nan')
+        rows.append({'model': f'drop_{n}', 'dropped': str(n),
+                     'limbs': ", ".join(map(str, keep_nodes)), 'cv_r2': r2,
+                     'unique_cv_r2': unique})
+
+    summary = pd.DataFrame(rows)
+    if save_path:
+        save_path = Path(save_path)
+        created_on = datetime.now().strftime('%Y%m%d_%H_%M_%S')
+        out_dir = save_path / 'glm' / 'multilimb_encoder' / f'limb_contributions_unit_{params.get("spikes",{}).get("unit",["?"])[0]}_{created_on}'
+        out_dir.mkdir(parents=True, exist_ok=True)
+        save_dataframe(summary, out_dir / 'limb_contributions.csv', storage_format='csv')
+
+    return fitted, summary
+
+
+# ── Across-session population decoding (with co-movement control) ─────────────
+
+def _find_binned_stores(pose_dir, spikes_dir):
+    """``{bin_ms: (pose_zarr, spike_zarr)}`` for bins present in both folders."""
+    import re
+    out_pose, out_spk = {}, {}
+    for folder, store, pat in ((pose_dir, out_pose, "resampled_movements_*ms.zarr"),
+                               (spikes_dir, out_spk, "movement_spike_counts_*ms.zarr")):
+        if folder and Path(folder).exists():
+            for p in Path(folder).glob(pat):
+                m = re.search(r"_(\d+)ms\.zarr$", p.name)
+                if m:
+                    store[int(m.group(1))] = p
+    return {ms: (out_pose[ms], out_spk[ms]) for ms in sorted(set(out_pose) & set(out_spk))}
+
+
+def _session_good_units(spikes_dir):
+    """Good unit ids from a session's phy cluster_group.tsv, or None."""
+    if not spikes_dir:
+        return None
+    hits = list(Path(spikes_dir).glob("*/phy_output/cluster_group.tsv"))
+    if not hits:
+        return None
+    try:
+        from neurokinematics.ephys.spikes.curation import good_unit_ids
+        return good_unit_ids(hits[0].parent)
+    except Exception:
+        return None
+
+
+def _iter_decode_sessions(sessions, bin_ms=None):
+    """Normalise ``sessions`` to ``[(label, pose_zarr, spike_zarr, spikes_dir)]``.
+
+    Accepts a ``{label: (pose_zarr, spike_zarr[, spikes_dir])}`` mapping, an
+    ``ExperimentSubject``-like object (``.sessions``), or an iterable of
+    session-like objects (``.dirs``, ``.session_id``).
+    """
+    def _from_obj(sess):
+        dirs = getattr(sess, 'dirs', {})
+        stores = _find_binned_stores(dirs.get('pose'), dirs.get('spikes'))
+        if not stores:
+            return None
+        if bin_ms is not None:
+            if bin_ms not in stores:
+                return None                       # honour the requested bin strictly
+            ms = bin_ms
+        else:
+            ms = max(stores)                      # default: largest (least noisy) bin
+        pose_p, spike_p = stores[ms]
+        return (str(getattr(sess, 'session_id', sess)), pose_p, spike_p, dirs.get('spikes'))
+
+    if isinstance(sessions, dict):
+        out = []
+        for label, val in sessions.items():
+            sdir = val[2] if len(val) >= 3 else None
+            out.append((str(label), val[0], val[1], sdir))
+        return out
+    seq = sessions.sessions if hasattr(sessions, 'sessions') else sessions
+    return [r for r in (_from_obj(s) for s in (seq or [])) if r]
+
+
+def decode_across_sessions(sessions, node, target="speed", contra_node=None,
+                           good_units="auto", select=None, bin_ms=None, n_splits=5,
+                           n_shuffle=100, smoothing_s=0.05, lag=None, alpha=1.0,
+                           all_events=True, save_path=None):
+    """Per-session population decode of a kinematic, summarised across sessions.
+
+    For each session this locates the binned pose/spike zarr stores, resolves the
+    decoding population (good units by default), and decodes ``target`` for:
+    ``ipsi`` (``node``); and — if ``contra_node`` is given — ``contra``
+    (``contra_node``) and ``ipsi_residual`` (``node`` after regressing out
+    ``contra_node``, the co-movement control). Each decode is event-grouped
+    cross-validated with a shuffle null. Sessions are the replication unit
+    (appropriate for one animal).
+
+    Args:
+        sessions: ``{label: (pose_zarr, spike_zarr[, spikes_dir])}`` mapping, an
+            ``ExperimentSubject``, or session objects.
+        node (str): Limb whose kinematic is decoded (e.g. ipsilateral hindpaw).
+        target (str): Kinematic feature (``'speed'``, ``'velocity_y'``, ...).
+        contra_node (str | None): If given, also decode it and the residual of
+            ``node`` orthogonal to it (the independent-ipsi control).
+        good_units: ``'auto'`` (curation 'good' per session), an explicit unit
+            list, or ``None`` (all units in the store).
+        select: Optional subset of sessions — a list/set of session labels to keep,
+            or a ``callable(label) -> bool``. ``None`` (default) uses all sessions.
+        bin_ms (int | None): Which binned store to use; defaults to the largest.
+        n_splits, n_shuffle, smoothing_s, lag, alpha, all_events: decoder settings
+            (held fixed across sessions for comparability).
+        save_path (Path | str | None): If given, write ``decode_across_sessions.csv``.
+
+    Returns:
+        pd.DataFrame: rows of ``session, decode, target, n_units, cv_r2, cv_corr,
+        shuffle_p`` (one per session × decode).
+    """
+    items = _iter_decode_sessions(sessions, bin_ms=bin_ms)
+    if select is not None:
+        if callable(select):
+            items = [it for it in items if select(it[0])]
+        else:
+            keep = {str(s) for s in select}
+            items = [it for it in items if str(it[0]) in keep]
+    if not items:
+        raise ValueError("No sessions to decode — none had matching binned stores, "
+                         "or `select` filtered them all out.")
+
+    rows = []
+    for label, pose_p, spike_p, sdir in items:
+        # resolve the decoding population
+        units = None
+        if good_units == "auto":
+            g = _session_good_units(sdir)
+            units = list(g) if g is not None else None
+        elif isinstance(good_units, (list, tuple, set)):
+            units = list(good_units)
+        try:
+            store_units = [int(u) for u in load_zarr(Path(spike_p), method='xarray').unit.values]
+        except Exception:
+            store_units = []
+        units = store_units if units is None else [u for u in units if int(u) in set(store_units)]
+
+        decodes = {"ipsi": {"node": node}}
+        if contra_node:
+            decodes = {"contra": {"node": contra_node},
+                       "ipsi": {"node": node},
+                       "ipsi_residual": {"node": node, "partial_out_node": contra_node}}
+
+        for dname, kw in decodes.items():
+            params = build_decoder_params(
+                node=kw["node"], units=units, target=target, n_splits=n_splits,
+                lag=lag, alpha=alpha, smoothing_s=smoothing_s, all_events=all_events,
+                n_shuffle=n_shuffle, partial_out_node=kw.get("partial_out_node"))
+            row = {"session": label, "decode": dname, "target": target,
+                   "n_units": len(units)}
+            try:
+                _, _, out = create_glm_decoder(pose_p, spike_p, params)
+                m = out["params"].get("metrics", {})
+                row.update({"cv_r2": m.get("cv_r2"), "cv_corr": m.get("cv_corr"),
+                            "shuffle_p": m.get("shuffle_p")})
+            except Exception as e:
+                row.update({"cv_r2": float('nan'), "cv_corr": float('nan'),
+                            "shuffle_p": float('nan'), "error": str(e)})
+            rows.append(row)
+
+    summary = pd.DataFrame(rows)
+    if save_path:
+        save_path = Path(save_path)
+        target_path = save_path if save_path.suffix else (save_path / 'decode_across_sessions.csv')
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        save_dataframe(summary, target_path, storage_format='csv')
+    return summary
+
+
+def _wilcoxon_vs0(values):
+    """One-sample Wilcoxon signed-rank of finite ``values`` against 0; NaN if too few."""
+    from scipy import stats
+    v = np.asarray(values, dtype=float)
+    v = v[np.isfinite(v)]
+    d = v[v != 0]
+    if d.size < 1:
+        return float('nan')
+    try:
+        return float(stats.wilcoxon(d).pvalue)
+    except Exception:
+        return float('nan')
+
+
+def decode_stats(summary):
+    """Session-level stats for an across-session decode summary.
+
+    Sessions are the replication unit (one animal). For each decode type it tests
+    whether CV R² is above chance across sessions, and it compares decode types
+    pairwise — so you can state, e.g., "contra > ipsi" and, crucially,
+    "ipsi-residual > 0" (the independent-ipsilateral claim).
+
+    Args:
+        summary (pd.DataFrame | list): Output of
+            :func:`decode_across_sessions` (or a list of them — concatenated).
+
+    Returns:
+        dict with:
+          * ``per_decode`` (DataFrame): per decode — ``n_sessions``,
+            ``median_cv_r2``, ``mean_cv_r2``, ``cv_r2_vs0_wilcoxon_p`` (population
+            "above chance?"), and ``k_shuffle_sig`` / ``n_shuffle`` (per-session
+            permutation hits).
+          * ``pairwise`` (DataFrame): paired Wilcoxon between decode types
+            (``contra`` vs ``ipsi``, ``ipsi`` vs ``ipsi_residual``, ...),
+            Holm-corrected (``wilcoxon_p_holm``).
+    """
+    import itertools
+    from scipy import stats
+
+    if isinstance(summary, (list, tuple)):
+        summary = pd.concat(list(summary), ignore_index=True)
+
+    present = list(summary['decode'].unique())
+    decodes = [d for d in ('contra', 'ipsi', 'ipsi_residual') if d in present]
+    decodes += [d for d in present if d not in decodes]
+
+    rows = []
+    for d in decodes:
+        sub = summary[summary['decode'] == d]
+        r2 = np.asarray(sub['cv_r2'].values, dtype=float)
+        r2 = r2[np.isfinite(r2)]
+        if 'shuffle_p' in sub.columns:
+            sp = np.asarray(sub['shuffle_p'].values, dtype=float)
+            sp = sp[np.isfinite(sp)]
+        else:
+            sp = np.array([])
+        rows.append({
+            'decode': d, 'n_sessions': int(r2.size),
+            'median_cv_r2': float(np.median(r2)) if r2.size else float('nan'),
+            'mean_cv_r2': float(np.mean(r2)) if r2.size else float('nan'),
+            'cv_r2_vs0_wilcoxon_p': _wilcoxon_vs0(r2),
+            'k_shuffle_sig': int((sp < 0.05).sum()), 'n_shuffle': int(sp.size),
+        })
+    per_decode = pd.DataFrame(rows)
+
+    piv = summary.pivot_table(index='session', columns='decode', values='cv_r2')
+    pr = []
+    for a, b in itertools.combinations(decodes, 2):
+        if a in piv.columns and b in piv.columns:
+            pair = piv[[a, b]].dropna()
+            diff = pair[a].values - pair[b].values
+            dnz = diff[diff != 0]
+            try:
+                p = float(stats.wilcoxon(dnz).pvalue) if dnz.size >= 1 else float('nan')
+            except Exception:
+                p = float('nan')
+            pr.append({'decode_a': a, 'decode_b': b, 'n_sessions': int(len(pair)),
+                       'median_diff': float(np.median(diff)) if len(pair) else float('nan'),
+                       'wilcoxon_p': p})
+    pairwise = pd.DataFrame(pr)
+    if not pairwise.empty:
+        from statsmodels.stats.multitest import multipletests
+        pairwise['wilcoxon_p_holm'] = np.nan
+        finite = pairwise['wilcoxon_p'].notna()
+        if finite.any():
+            pairwise.loc[finite, 'wilcoxon_p_holm'] = multipletests(
+                pairwise.loc[finite, 'wilcoxon_p'].values, method='holm')[1]
+
+    return {'per_decode': per_decode, 'pairwise': pairwise}

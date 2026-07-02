@@ -18,6 +18,10 @@ from neurokinematics.models.glm import (
     _fit_linear_model,
     _circular_shift_within_groups,
     shuffle_null_cv_r2,
+    build_multilimb_encoder_params,
+    create_multilimb_encoder,
+    compare_limb_contributions,
+    decode_stats,
 )
 
 
@@ -834,3 +838,184 @@ class TestCompareGlmModels:
                 f"Expected [{feat!r}] but got {stored_features!r} — "
                 "params_ (not params) must be saved per model"
             )
+
+
+# ---------------------------------------------------------------------------
+# multi-limb encoder + per-limb variance partitioning
+# ---------------------------------------------------------------------------
+
+def make_multilimb_pose(n_events=60, n_bins=15, nodes=("lf", "rf", "lh", "rh"), seed=0):
+    rng = np.random.default_rng(seed)
+    n = len(nodes)
+    velocity = rng.normal(size=(n_events, n_bins, n, 2))
+    valid = np.ones((n_events, n_bins), dtype=bool)
+    return xr.Dataset(
+        {
+            "velocity": (["event", "time_bin", "node", "coord"], velocity),
+            "valid": (["event", "time_bin"], valid),
+            "reference_node": (["event"], np.array([nodes[0]] * n_events)),
+        },
+        coords={
+            "event": np.arange(n_events),
+            "time_bin": np.linspace(0.0, 1.0, n_bins),
+            "node": list(nodes),
+            "coord": ["x", "y"],
+        },
+    )
+
+
+def make_spikes_from_limb(pose, driving="lf", coord="y", seed=1):
+    """Poisson spikes whose rate depends only on one limb's velocity."""
+    rng = np.random.default_rng(seed)
+    v = pose["velocity"].sel(node=driving, coord=coord).values     # (event, bins)
+    rate = np.exp(0.2 + 1.5 * v)
+    counts = rng.poisson(rate).astype(float)[..., None]            # (event, bins, 1)
+    valid = np.ones(counts.shape[:2], dtype=bool)
+    return xr.Dataset(
+        {
+            "spike_counts": (["event", "time_bin", "unit"], counts),
+            "valid": (["event", "time_bin"], valid),
+        },
+        coords={
+            "event": pose.event.values,
+            "time_bin": pose.time_bin.values,
+            "unit": np.array([0]),
+        },
+    )
+
+
+class TestMultiLimbEncoder:
+
+    def test_params_shape(self):
+        p = build_multilimb_encoder_params(["lf", "rf"], 0, ["velocity_y"], n_splits=4)
+        assert p["type"] == "multilimb_encoder"
+        assert p["pose"]["nodes"] == ["lf", "rf"]
+        assert p["spikes"]["unit"] == [0]
+        assert p["cv"]["n_splits"] == 4
+
+    def test_design_has_column_per_limb_feature(self):
+        pose = make_multilimb_pose()
+        spikes = make_spikes_from_limb(pose)
+        params = build_multilimb_encoder_params(
+            ["lf", "rf", "lh", "rh"], 0, ["velocity_x", "velocity_y"], n_splits=0)
+        _, results, outputs = create_multilimb_encoder(pose, spikes, params=params)
+        names = list(results.params.index)
+        # one column per (limb, feature) + intercept = 4 limbs * 2 feats + 1
+        assert "lf__velocity_y" in names and "rh__velocity_x" in names
+        assert len([n for n in names if "__" in n]) == 4 * 2
+        assert set(outputs["attrs"]["limb_columns"]) == {"lf", "rf", "lh", "rh"}
+
+    def test_unique_contribution_recovers_driving_limb(self):
+        pose = make_multilimb_pose(n_events=60, n_bins=15, seed=2)
+        spikes = make_spikes_from_limb(pose, driving="lf", coord="y", seed=3)
+        params = build_multilimb_encoder_params(
+            ["lf", "rf", "lh", "rh"], 0, ["velocity_y"], n_splits=4)
+        fitted, summary = compare_limb_contributions(pose, spikes, params)
+        assert set(summary["model"]) == {"full", "drop_lf", "drop_rf", "drop_lh", "drop_rh"}
+        drops = summary[summary.model != "full"].set_index("dropped")
+        # dropping the limb the unit actually depends on hurts CV fit the most
+        assert drops.loc["lf", "unique_cv_r2"] == drops["unique_cv_r2"].max()
+        assert drops.loc["lf", "unique_cv_r2"] > 0
+
+    def test_saves_under_multilimb_encoder(self, tmp_path):
+        pose = make_multilimb_pose()
+        spikes = make_spikes_from_limb(pose)
+        params = build_multilimb_encoder_params(["lf", "rf"], 0, ["velocity_y"], n_splits=3)
+        create_multilimb_encoder(pose, spikes, params=params, save_path=tmp_path)
+        hits = list((tmp_path / "glm" / "multilimb_encoder").glob("**/predictions.zarr"))
+        assert len(hits) == 1
+
+
+# ---------------------------------------------------------------------------
+# residual (co-movement-controlled) decode + across-session driver
+# ---------------------------------------------------------------------------
+
+class TestPartialOutDecode:
+
+    def test_build_param_carries_partial_out(self):
+        p = build_decoder_params("l_hindpaw", [0, 1], "speed",
+                                  partial_out_node="r_hindpaw")
+        assert p["pose"]["partial_out_node"] == "r_hindpaw"
+
+    def test_residual_decode_runs_and_records(self):
+        from neurokinematics.models.glm import create_glm_decoder
+        pose = make_multilimb_pose(n_events=40, n_bins=12, seed=4)
+        spikes = make_spike_dataset(n_events=40, n_bins=12, n_units=3, seed=5)
+        params = build_decoder_params(
+            "lf", [0, 1, 2], "velocity_y", n_splits=3, all_events=True,
+            partial_out_node="rf")
+        _, _, outputs = create_glm_decoder(pose, spikes, params=params)
+        assert outputs["attrs"]["partial_out_node"] == "rf"
+        assert outputs["observed"].ndim == 1
+
+
+class TestDecodeAcrossSessions:
+
+    def _save_session(self, tmp_path, label, seed):
+        from neurokinematics.io import save_dataset
+        pose = make_multilimb_pose(n_events=40, n_bins=12, seed=seed)
+        # add a 'speed' scalar-per-node var so 'speed' is a valid target
+        import numpy as np
+        spd = np.abs(pose["velocity"]).sum("coord")
+        pose = pose.assign(speed=spd)
+        spikes = make_spike_dataset(n_events=40, n_bins=12, n_units=4, seed=seed + 1)
+        pdir = tmp_path / label / "pose"
+        sdir = tmp_path / label / "spikes"
+        pose_p = pdir / "resampled_movements_50ms.zarr"
+        spike_p = sdir / "movement_spike_counts_50ms.zarr"
+        save_dataset(pose, pose_p)
+        save_dataset(spikes, spike_p)
+        return pose_p, spike_p, sdir
+
+    def test_driver_summary_shape(self, tmp_path):
+        from neurokinematics.models.glm import decode_across_sessions
+        sessions = {
+            "d1": self._save_session(tmp_path, "d1", 10),
+            "d2": self._save_session(tmp_path, "d2", 20),
+        }
+        summary = decode_across_sessions(
+            sessions, node="lf", contra_node="rf", target="speed",
+            good_units=None, n_splits=3, n_shuffle=0, all_events=True)
+        # 2 sessions x 3 decodes (contra / ipsi / ipsi_residual)
+        assert len(summary) == 6
+        assert set(summary["decode"]) == {"contra", "ipsi", "ipsi_residual"}
+        assert set(summary["session"]) == {"d1", "d2"}
+        assert "cv_r2" in summary.columns
+
+
+class TestDecodeStats:
+
+    def _summary(self):
+        rng = np.random.default_rng(0)
+        rows = []
+        for s in range(10):
+            rows.append({"session": f"s{s}", "decode": "contra",
+                         "cv_r2": 0.30 + rng.normal(0, 0.03), "shuffle_p": 0.001})
+            rows.append({"session": f"s{s}", "decode": "ipsi",
+                         "cv_r2": 0.25 + rng.normal(0, 0.03), "shuffle_p": 0.001})
+            rows.append({"session": f"s{s}", "decode": "ipsi_residual",
+                         "cv_r2": 0.12 + rng.normal(0, 0.04),
+                         "shuffle_p": (0.01 if s < 8 else 0.2)})
+        return pd.DataFrame(rows)
+
+    def test_per_decode_columns_and_counts(self):
+        out = decode_stats(self._summary())
+        pd_ = out["per_decode"].set_index("decode")
+        assert set(pd_.index) == {"contra", "ipsi", "ipsi_residual"}
+        for col in ("n_sessions", "median_cv_r2", "cv_r2_vs0_wilcoxon_p",
+                    "k_shuffle_sig", "n_shuffle"):
+            assert col in out["per_decode"].columns
+        assert pd_.loc["ipsi_residual", "k_shuffle_sig"] == 8     # 8/10 sig
+        # residual is above chance across sessions
+        assert pd_.loc["ipsi_residual", "cv_r2_vs0_wilcoxon_p"] < 0.05
+
+    def test_pairwise_holm(self):
+        out = decode_stats(self._summary())
+        pw = out["pairwise"]
+        assert {"decode_a", "decode_b", "wilcoxon_p", "wilcoxon_p_holm"} <= set(pw.columns)
+        assert len(pw) == 3                       # 3 pairs among 3 decodes
+
+    def test_accepts_list(self):
+        df = self._summary()
+        out = decode_stats([df.iloc[:15], df.iloc[15:]])
+        assert len(out["per_decode"]) == 3
