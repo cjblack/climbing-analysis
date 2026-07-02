@@ -10,6 +10,7 @@ from pathlib import Path
 from tqdm.auto import tqdm
 
 from scipy.signal import hilbert, butter, filtfilt
+from scipy.fft import next_fast_len
 from scipy.ndimage import label
 import numpy as np
 import pandas as pd
@@ -67,10 +68,16 @@ def detect_camera_on(signal, fs, detection_settings:dict, save_path: Path | str 
     bandwidth = detection_settings['bandwidth']
     
     # Bandpass filter around the square wave frequency
+    print(f"  Bandpass filtering {len(signal):,} samples around {frame_rate:g} Hz...")
     filtered = bandpass_filter(signal, fs, frame_rate, bandwidth=bandwidth)
 
-    # Envelope via Hilbert transform
-    envelope = np.abs(hilbert(filtered))
+    # Envelope via Hilbert transform. hilbert() is FFT-based and is by far the
+    # slowest step on long recordings — pad to a fast FFT length so an awkward
+    # sample count (e.g. a large prime factor) doesn't make it pathologically slow.
+    print("  Computing signal envelope (Hilbert transform)...")
+    n = len(filtered)
+    fast_n = next_fast_len(n)
+    envelope = np.abs(hilbert(filtered, N=fast_n)[:n])
 
     # Threshold to detect active (camera on) regions
     threshold = threshold_ratio * np.max(envelope)
@@ -150,12 +157,18 @@ def get_camera_events(directory: str, camera_cfg_file: str, save_path: Path | st
     rec_idx = record_settings['record_index']
     event_channel = record_settings['event_channel']
 
-    print('Check analog channel for frames')
+    print(f"Loading analog channel {event_channel} from {directory} "
+          f"(node {node_idx}, recording {rec_idx})...")
     continuous, _ = get_continuous(directory, node_idx=node_idx, rec_idx=rec_idx)
     sample_rate = continuous.metadata.sample_rate #continuous.metadata['sample_rate']
 
     event_data = continuous.samples[:,event_channel]
     ts = continuous.sample_numbers/sample_rate
+
+    n_samples = event_data.shape[0]
+    print(f"Loaded {n_samples:,} samples @ {sample_rate:g} Hz "
+          f"(~{n_samples / sample_rate / 60:.1f} min of recording). "
+          f"Detecting camera frames (this can take a while for long recordings)...")
 
     bouts, envelope, frame_captures, frame_map = detect_camera_on(event_data, sample_rate, detection_settings, save_path)
 

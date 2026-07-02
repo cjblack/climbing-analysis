@@ -51,6 +51,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     # now requires config file — accept either a filename or an already-loaded dict
     cfg = pose_cfg if isinstance(pose_cfg, dict) else load_config(pose_cfg, config_type='pose')
     preprocessing = cfg['pose_preprocessing']
+    tracker = cfg['pose_format']['tracker']
     file_format = cfg['pose_format']['file_format']
     sample_rate = cfg['pose_format']['frame_rate']
     meta_cfg = cfg['pose_format']['metadata']
@@ -81,6 +82,7 @@ def process_sleap(data_path: str, pose_cfg: str, save_path: Path | str | None = 
     # call dask batch load - this is lazy
     ddf = dask_batch_load_files(
         file_list,
+        tracker=tracker,
         meta_cfg = meta_cfg,
         sample_rate=sample_rate,
         preprocess=preprocessing,
