@@ -276,7 +276,7 @@ def load_sleap(filename: str):
             'coords': ["X", "Y"],
             }
 
-def load_anipose(filename: str, n_subjects: int =1):
+def load_dlc(filename: str, n_subjects: int =1):
     """Anipose loader
 
     Args:
@@ -323,7 +323,8 @@ def load_anipose(filename: str, n_subjects: int =1):
 
 POSE_LOADERS = {
     'sleap': load_sleap,
-    'anipose': load_anipose,
+    'anipose': load_dlc,
+    'dlc': load_dlc,
 }
 
 def dask_load_file(filename: str, tracker: str, meta_cfg: dict, sample_rate: float = 200., preprocess: dict | None = None):
